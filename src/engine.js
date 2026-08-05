@@ -803,6 +803,8 @@ function spawnFromQueue(dt){
 function checkWaveClear(){
   if(G.state!=='play') return;
   if(G.spawnQueue.length===0 && G.enemies.every(e=>!e.alive)){
+    // 波次结束: 全图金币/道具自动飞向玩家(不再漏捡)
+    for(const pk of G.pickups) pk.magnet=true;
     // 波次结束
     G.enemies=G.enemies.filter(e=>e.alive);
     if(G.wave>=TOTAL_WAVES){ doVictory(); return; }
@@ -1122,10 +1124,15 @@ function updateAIPlayer(p,dt){
     // 技能好了就用(怪多时)
     if(p.skillCd<=0 && G.enemies.filter(e=>e.alive).length>=4){ playerSkill(p); }
   } else {
-    // 没怪时跟随 P1
-    const leader=G.players.find(q=>q!==p&&q.alive);
-    if(leader){ const d=dist(p.x,p.y,leader.x,leader.y);
-      if(d>90){ const a=angleTo(p.x,p.y,leader.x,leader.y); mx=Math.cos(a); my=Math.sin(a); } }
+    // 没怪时: 优先捡附近掉落(金币/武器/装备), 否则跟随 P1
+    let pk=null,pd=1e9;
+    for(const k of G.pickups){ const d=dist(p.x,p.y,k.x,k.y); if(d<pd){pd=d;pk=k;} }
+    if(pk && pd<420){ const a=angleTo(p.x,p.y,pk.x,pk.y); mx=Math.cos(a); my=Math.sin(a); }
+    else {
+      const leader=G.players.find(q=>q!==p&&q.alive);
+      if(leader){ const d=dist(p.x,p.y,leader.x,leader.y);
+        if(d>90){ const a=angleTo(p.x,p.y,leader.x,leader.y); mx=Math.cos(a); my=Math.sin(a); } }
+    }
   }
   // 躲避激活的陷阱(AI不再站刺上输出)
   for(const tr of G.traps){ if(tr.active){ const td=dist(p.x,p.y,tr.x,tr.y);
@@ -1196,9 +1203,9 @@ function updatePickups(dt){
     let best=null,bd=1e9;
     for(const p of G.players){if(!p.alive)continue;const d=dist(pk.x,pk.y,p.x,p.y);if(d<bd){bd=d;best=p;}}
     if(best){
-      if(bd<130){ // 磁吸: 越近吸越快(缓入)
+      if(bd<130 || pk.magnet){ // 磁吸: 越近吸越快(缓入); magnet=波末全图吸收
         const a=angleTo(pk.x,pk.y,best.x,best.y);
-        const pull = 400 + (130-bd)*6;
+        const pull = pk.magnet? 900 : 400 + (130-bd)*6;
         pk.vx=Math.cos(a)*pull; pk.vy=Math.sin(a)*pull;
       } else { pk.vx*=0.88; pk.vy*=0.88; } // 初始弹出后减速(惯性)
       pk.x+=pk.vx*dt; pk.y+=pk.vy*dt;
