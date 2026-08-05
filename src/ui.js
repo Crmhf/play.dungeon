@@ -207,7 +207,10 @@ function buildSelect(){
 // ---------- 主循环 ----------
 let lastT=0;
 function loop(t){
-  const dt=Math.min(0.05,(t-lastT)/1000); lastT=t;
+  // 健壮性: 某些环境 rAF 不传时间戳(或 NaN), 回退 performance.now(), dt 异常时按 60fps 步进
+  const now=(typeof t==='number'&&t===t)? t : performance.now();
+  let dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
+  if(!(dt>0)) dt=0.016;
   if(G.state!=='pause') update(dt);
   if(G.state!=='menu'&&G.state!=='select') render();
   requestAnimationFrame(loop);
@@ -287,5 +290,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 
   playBgm('menu');
   G.state='menu';
+  // 深链直开: #auto=knight,archer 跳过菜单直接开局(测试/嵌入用)
+  const am=(location.hash||'').match(/auto=([a-z,]+)/);
+  if(am){ const sel=am[1].split(',').filter(k=>HERO_TYPES[k]).slice(0,2);
+    if(sel.length){ $('loading').classList.add('hidden'); $('menu').classList.add('hidden'); $('select').classList.add('hidden'); startGame(sel); } }
   requestAnimationFrame(loop);
 });
