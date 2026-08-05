@@ -1,4 +1,8 @@
 // ========== HUD / UI / 主入口 (依赖 engine.js 的全局 G) ==========
+window.addEventListener('error',e=>{
+  let d=document.getElementById('errbox'); if(!d){d=document.createElement('div');d.id='errbox';d.style.cssText='position:fixed;top:0;left:0;color:#f66;z-index:999;font:12px monospace;background:#000a;padding:4px;max-width:90vw';document.body.appendChild(d);}
+  d.textContent='ERR: '+e.message+' @ '+(e.filename||'').split('/').pop()+':'+e.lineno;
+});
 
 function drawHUD(ctx){
   // 顶部栏
@@ -10,6 +14,10 @@ function drawHUD(ctx){
     const x=20+i*280, y=14;
     ctx.fillStyle=p.alive?p.color:'#555'; ctx.font='bold 13px "Press Start 2P",monospace'; ctx.textAlign='left';
     ctx.fillText(`P${i+1} ${p.def.name}`, x, y+10);
+    // 每人独立金币(名字右侧)
+    if(G.imgs.coin) ctx.drawImage(G.imgs.coin, x+118, y-1, 15,15);
+    ctx.fillStyle='#ffd34d'; ctx.font='bold 11px "Press Start 2P",monospace';
+    ctx.fillText(`${p.gold||0}`, x+136, y+11);
     drawBar(ctx,x,y+18,180,12,p.hp/p.maxHp, p.alive?'#7ee081':'#444');
     ctx.fillStyle='#fff';ctx.font='10px "Press Start 2P",monospace';
     ctx.fillText(`${Math.ceil(p.hp)}/${Math.ceil(p.maxHp)}`,x+186,y+28);
@@ -44,11 +52,9 @@ function drawHUD(ctx){
     ctx.strokeStyle='#ffd34d'; ctx.lineWidth=2; ctx.strokeRect(bx-3,by-3,bw+6,18);
   }
 
-  // 金币 / 击杀
-  ctx.textAlign='right'; ctx.fillStyle='#ffd34d'; ctx.font='bold 14px "Press Start 2P",monospace';
-  if(G.imgs.coin) ctx.drawImage(G.imgs.coin, VIEW_W-220, 16, 22,22);
-  ctx.fillText(`${G.gold}`, VIEW_W-190, 34);
-  ctx.fillStyle='#ff8a5c'; ctx.fillText(`💀 ${G.kills}`, VIEW_W-110, 34);
+  // 击杀数(右上角; 金币已改为每人独立,显示在各自血条旁)
+  ctx.textAlign='right'; ctx.fillStyle='#ff8a5c'; ctx.font='bold 14px "Press Start 2P",monospace';
+  ctx.fillText(`💀 ${G.kills}`, VIEW_W-110, 34);
   ctx.fillStyle='#8ab'; ctx.font='10px "Press Start 2P",monospace';
   ctx.fillText(`${G.fps}fps`, VIEW_W-20, 58);
 
@@ -123,21 +129,33 @@ function showVictoryUI(){
   $('victory').classList.remove('hidden');
 }
 
-// ---------- 商店 UI ----------
+// ---------- 商店 UI (P1/P2 金币独立, 分人购买) ----------
 function showShopUI(){
   $('shop').classList.remove('hidden');
-  $('shop-gold').textContent=G.gold;
+  $('shop-gold').innerHTML=G.players.map((p,i)=>
+    `<span style="color:${p.color}">P${i+1}</span> 💰${p.gold||0}`).join(' · ');
   const box=$('shop-cards'); box.innerHTML='';
   G.shopItems.forEach((it,i)=>{
+    it.soldBy=it.soldBy||{};
     const d=document.createElement('div');
-    const afford=G.gold>=it.price;
-    d.className='shop-card'+(it.sold?' sold':'')+((!afford&&!it.sold)?' cant':'');
+    d.className='shop-card';
+    const btns=G.players.map((p,si)=>{
+      const sold=!!it.soldBy[si];
+      const afford=(p.gold||0)>=it.price;
+      const cls=sold?'sold':(afford?'':'no');
+      return `<button class="shop-buy ${cls}" data-i="${i}" data-s="${si}" ${sold||!p.alive?'disabled':''}
+        style="font-family:inherit;font-size:10px;margin:3px 2px 0;padding:7px 10px;cursor:pointer;border-radius:6px;
+        border:2px solid ${sold?'#444':p.color};background:${sold?'#1a1428':'#241a3a'};color:${sold?'#666':afford?'#ffd34d':'#ff5c5c'}">
+        P${si+1} ${sold?'已购':'💰'+it.price}</button>`;
+    }).join('');
     d.innerHTML=`<div class="shop-icon">${it.icon}</div>
       <div class="shop-name">${it.name}</div>
       <div class="shop-desc">${it.desc}</div>
-      <div class="shop-price ${afford?'':'no'}">${it.sold?'已售出':'💰'+it.price}</div>`;
-    if(!it.sold) d.onclick=()=>buyShopItem(i);
+      <div class="shop-buyrow">${btns}</div>`;
     box.appendChild(d);
+  });
+  box.querySelectorAll('.shop-buy:not([disabled])').forEach(b=>{
+    b.onclick=()=>buyShopItem(+b.dataset.i, +b.dataset.s);
   });
 }
 function hideShopUI(){ $('shop').classList.add('hidden'); }

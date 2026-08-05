@@ -6,6 +6,9 @@
 <title>地牢双雄 · DUNGEON DUO — 双人合作 Roguelike</title>
 <meta name="description" content="两个老友在暗黑地牢里一直砍怪,每波结束变强一点,扛到最后就是胜利。俯视同屏双人合作生存 Roguelike,万圣节像素风。">
 <meta name="theme-color" content="#1a0f2e">
+<meta property="og:title" content="地牢双雄 · DUNGEON DUO">
+<meta property="og:description" content="双人同屏合作 Roguelike：四职业专属技能，30波怪潮5大主题关卡，打开浏览器就能玩。">
+<meta property="og:image" content="assets/img/ui/cover.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
@@ -39,6 +42,8 @@
   /* ---------- 菜单 logo ---------- */
   #menu-logo{width:130px;height:130px;image-rendering:pixelated;margin-bottom:18px;filter:drop-shadow(0 0 18px rgba(176,108,224,.7))}
   .menu-hint{margin-top:30px;font-size:10px;color:#8a7ab0;line-height:2}
+  /* 主菜单封面背景(AI生成, 已压缩) */
+  #menu{background:linear-gradient(rgba(8,4,16,.82),rgba(8,4,16,.92)),url('assets/img/ui/cover.jpg') center/cover no-repeat}
 
   /* ---------- 角色选择 ---------- */
   #hero-cards{display:flex;gap:18px;margin:26px 0}
@@ -128,7 +133,7 @@
   <!-- 商店 (过关后) -->
   <div id="shop" class="overlay hidden">
     <div class="up-title">🛒 地牢商店</div>
-    <div class="shop-gold">金币: <span id="shop-gold">0</span></div>
+    <div class="shop-gold">各自金币: <span id="shop-gold">0</span></div>
     <div id="shop-cards"></div>
     <button class="btn" id="shop-leave">继续前进 →</button>
   </div>
@@ -163,8 +168,8 @@
   </div>
 </div>
 
-<script src="src/engine.js?v=20260805c"></script>
-<script src="src/ui.js?v=20260805c"></script>
-<script src="src/touch.js?v=20260805c"></script>
+<script src="src/engine.js?v=20260805f"></script>
+<script src="src/ui.js?v=20260805f"></script>
+<script src="src/touch.js?v=20260805f"></script>
 </body>
 </html>

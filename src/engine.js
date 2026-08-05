@@ -15,11 +15,11 @@ const DEATH_ANIM_DUR = 0.38;         // 小怪死亡消散动画时长(秒)
 // ---------- 资源清单 ----------
 const ASSETS = {
   levels: [
-    'assets/img/levels/level1-dungeon.png',
-    'assets/img/levels/level2-graveyard.png',
-    'assets/img/levels/level3-castle.png',
-    'assets/img/levels/level4-abyss.png',
-    'assets/img/levels/level5-halloween.png',
+    'assets/img/levels/level1-dungeon.jpg',
+    'assets/img/levels/level2-graveyard.jpg',
+    'assets/img/levels/level3-castle.jpg',
+    'assets/img/levels/level4-abyss.jpg',
+    'assets/img/levels/level5-halloween.jpg',
   ],
   ui: { logo: 'assets/img/ui/logo.png', coin: 'assets/img/ui/coin.png' },
   bgm: {
@@ -57,13 +57,13 @@ const ENEMY_TYPES = {
 // skill: { name 技能名 / cd 冷却 / color 特效色 / desc 描述 }
 const HERO_TYPES = {
   knight: { name:'骑士', desc:'近战肉盾 · 砍一片', sheet:'chars', col:0, row:0, hp:240, spd:150, atk:23, rate:0.50, range:70,  arc:true,  projSpeed:0,   color:'#c8d0e0', sfx:'sword',
-    skill:{ name:'旋风斩', cd:7, color:'#9adcff', desc:'大范围横扫+3秒减伤50%' } },
+    skill:{ name:'旋风斩', cd:7, color:'#9adcff', desc:'横扫+减速敌人+3秒减伤50%' } },
   archer: { name:'弓手', desc:'远程 · 穿透箭',     sheet:'chars', col:6, row:3, hp:115, spd:165, atk:15, rate:0.32, range:420, arc:false, projSpeed:520, pierce:true, color:'#a8e063', sfx:'bow',
-    skill:{ name:'天降箭雨', cd:9, color:'#a8e063', desc:'目标区域倾泻20支落箭' } },
+    skill:{ name:'天降箭雨', cd:9, color:'#a8e063', desc:'目标区域倾泻24支落箭' } },
   mage:   { name:'法师', desc:'中距 AOE · 弹射魔法', sheet:'priest', variant:1, hp:100, spd:140, atk:19, rate:0.50, range:380, arc:false, projSpeed:420, bounce:2, aoe:60, color:'#b06ce0', sfx:'magic',
-    skill:{ name:'奥术湮灭', cd:12, color:'#e08cff', desc:'全屏级大爆炸,毁天灭地' } },
+    skill:{ name:'奥术湮灭', cd:12, color:'#e08cff', desc:'大爆炸+灼烧3秒,毁天灭地' } },
   rogue:  { name:'盗贼', desc:'极快高闪 · 双刀',   sheet:'chars', col:0, row:1, hp:115, spd:195, atk:13, rate:0.18, range:64,  arc:true,  projSpeed:0,   dodgeCd:1.3, color:'#e0b25c', sfx:'swing',
-    skill:{ name:'暗影突袭', cd:6, color:'#e0b25c', desc:'隐身冲刺+4秒刀刀暴击' } },
+    skill:{ name:'暗影突袭', cd:6, color:'#e0b25c', desc:'隐身必暴+加速,重置闪避' } },
 };
 
 // 关卡主题
@@ -244,7 +244,7 @@ function makePlayer(heroKey, slot){ // slot 0=P1 1=P2
     hp:t.hp, maxHp:t.hp, spd:t.spd, atk:t.atk, rate:t.rate,
     dmgMul:1, rateMul:1, projMul:1, rangeMul:1, shots:1, dashMul:1,
     iframeBonus:0, regen:0, lifesteal:0, thorns:0, thunder:0,
-    killExplode:false, minions:0,
+    killExplode:false, minions:0, gold:0, // gold: 每人独立金币
     atkCd:0, dashCd:0, dashing:0, dashDx:0, dashDy:0, invuln:0,
     skillCd:0, skillMax:t.skill.cd, guardT:0, shadowT:0, // guardT: 骑士减伤 / shadowT: 盗贼必暴
     animT:0, walkT:0, state:'idle',
@@ -330,26 +330,31 @@ function playerSkill(p){
   p.skillCd=p.skillMax;
   // 释放时头顶显示技能名
   spawnFloater(p.x, p.y-p.r-24, sk.name+'!', sk.color, 22);
-  if(p.heroKey==='knight'){ // 旋风斩: 大横扫 + 3秒减伤护盾(肉盾特色: 攻守兼备)
+  if(p.heroKey==='knight'){ // 旋风斩: 大横扫+减速控制 + 3秒减伤护盾(肉盾: 控场承伤)
     playSfx('heavy',0.9); addShake(8,0.2);
-    for(const e of G.enemies){ if(!e.alive)continue; if(dist(p.x,p.y,e.x,e.y)<190+e.r) damageEnemy(e,p.atk*p.dmgMul*2.2,p); }
+    for(const e of G.enemies){ if(!e.alive)continue;
+      if(dist(p.x,p.y,e.x,e.y)<200+e.r){ damageEnemy(e,p.atk*p.dmgMul*2.2,p);
+        e.slowT=1.2; e.slowMul=0.4; } } // 命中减速60%, 给队友输出窗口
     for(let a=0;a<Math.PI*2;a+=0.35) G.particles.push({x:p.x,y:p.y,vx:Math.cos(a)*280,vy:Math.sin(a)*280,life:0.4,maxLife:0.4,color:sk.color,size:4});
     p.guardT=3; // 减伤50% 3秒
     spawnFloater(p.x, p.y+p.r+18, '减伤护盾!', '#5cd4ff', 14);
-  } else if(p.heroKey==='archer'){ // 天降箭雨: 锁定最近怪区域, 倾泻落箭(远程压场)
+  } else if(p.heroKey==='archer'){ // 天降箭雨: 锁定最近怪区域, 高密度落箭(远程压场)
     playSfx('bow',1); addShake(4,0.15);
     const tgt=playerNearestEnemy(p);
     const cx=tgt?tgt.x:p.x, cy=tgt?tgt.y:p.y;
-    for(let i=0;i<20;i++){ const ox=rand(-170,170), oy=rand(-170,170);
-      G.projectiles.push({x:cx+ox, y:cy+oy-300, vx:rand(-30,30), vy:580*p.projMul, dmg:p.atk*p.dmgMul*1.2, r:8, pierce:true, bounce:0, aoe:0, color:p.color, owner:p, life:0.9, kind:'bow'}); }
-  } else if(p.heroKey==='mage'){ // 奥术湮灭: 全屏级大爆炸(玻璃大炮: 最高爆发最长CD)
+    for(let i=0;i<24;i++){ const ox=rand(-150,150), oy=rand(-150,150);
+      G.projectiles.push({x:cx+ox, y:cy+oy-300, vx:rand(-30,30), vy:580*p.projMul, dmg:p.atk*p.dmgMul*1.35, r:8, pierce:true, bounce:0, aoe:0, color:p.color, owner:p, life:0.9, kind:'bow'}); }
+  } else if(p.heroKey==='mage'){ // 奥术湮灭: 大爆炸+灼烧DoT(玻璃大炮: 爆发+持续)
     playSfx('explode',1); addShake(14,0.4); hitStop(0.08); screenFlash('#e08cff',0.5);
-    for(const e of G.enemies){ if(!e.alive)continue; if(dist(p.x,p.y,e.x,e.y)<340+e.r) damageEnemy(e,p.atk*p.dmgMul*3.2,p,{knockback:260}); }
+    for(const e of G.enemies){ if(!e.alive)continue;
+      if(dist(p.x,p.y,e.x,e.y)<340+e.r){ damageEnemy(e,p.atk*p.dmgMul*3.2,p,{knockback:260});
+        if(e.alive) e.burn={dps:6+p.atk*p.dmgMul*0.25, t:3}; } } // 灼烧3秒
     G.particles.push({shock:true,x:p.x,y:p.y,r:10,maxR:340,life:0.4,maxLife:0.4,color:sk.color});
     for(let i=0;i<40;i++) spawnParticles(p.x,p.y,sk.color,1,340,0.7,5);
-  } else if(p.heroKey==='rogue'){ // 暗影突袭: 隐身冲刺 + 4秒刀刀暴击(刺客节奏)
+  } else if(p.heroKey==='rogue'){ // 暗影突袭: 隐身冲刺+4秒必暴+加速, 并重置闪避(刺客节奏)
     playSfx('swing',0.8);
     p.invuln=Math.max(p.invuln,1.2); p.dashing=0.35; p.shadowT=4;
+    p.dashCd=0; // 重置闪避, 可立刻再位移一次
     const a=p.aimAngle; p.dashDx=Math.cos(a); p.dashDy=Math.sin(a);
     spawnParticles(p.x,p.y,sk.color,16,180,0.5,4);
     spawnFloater(p.x, p.y+p.r+18, '刀刀暴击!', '#ff4d4d', 14);
@@ -469,6 +474,10 @@ function updateEnemy(e, dt){
   // 中毒 DoT
   if(e.poison && e.poison.t>0){ e.poison.t-=dt; e.hp-=e.poison.dps*dt;
     if(Math.random()<dt*8) spawnParticles(e.x,e.y-e.r,'#8ee05c',1,30,0.4,3);
+    if(e.hp<=0){ killEnemy(e,null); return; } }
+  // 灼烧 DoT(法师奥术湮灭)
+  if(e.burn && e.burn.t>0){ e.burn.t-=dt; e.hp-=e.burn.dps*dt;
+    if(Math.random()<dt*10) spawnParticles(e.x,e.y-e.r,'#ff9540',1,50,0.35,3);
     if(e.hp<=0){ killEnemy(e,null); return; } }
   // 减速
   let spdMul=1;
@@ -693,10 +702,11 @@ function checkWaveClear(){
     // 波次结束
     G.enemies=G.enemies.filter(e=>e.alive);
     if(G.wave>=TOTAL_WAVES){ doVictory(); return; }
-    // 清场奖励: 金币 + 连招加成结算
+    // 清场奖励: 每位存活玩家各得一份(连击加成结算)
     const bonus = 10 + G.wave*2 + Math.round(G.comboBest*0.5);
-    G.gold+=bonus; playSfx('bowhit',0.6);
-    if(G.comboBest>=8) spawnFloater(WORLD_W/2, WORLD_H/2-40, `清场! +${bonus}💰 (最佳${G.comboBest}连)`, '#ffd34d', 24);
+    for(const p of G.players){ if(p.alive) p.gold=(p.gold||0)+bonus; }
+    playSfx('bowhit',0.6);
+    if(G.comboBest>=8) spawnFloater(WORLD_W/2, WORLD_H/2-40, `清场! 每人+${bonus}💰 (最佳${G.comboBest}连)`, '#ffd34d', 24);
     G.comboBest=0;
     const waveInLvl=G.wave%WAVES_PER_LEVEL;
     if(waveInLvl===0){ // 关卡结束 -> 传送门
@@ -765,17 +775,17 @@ function openShop(){
   playSfx('magic',0.6);
   showShopUI();
 }
-function buyShopItem(i){
-  const it=G.shopItems[i]; if(!it||it.sold) return;
-  if(G.gold<it.price){ playSfx('hit',0.3); spawnFloater(WORLD_W/2,WORLD_H/2-140,'金币不足!','#ff5c5c',22); return; }
-  G.gold-=it.price; it.sold=true; playSfx('bowhit',0.7);
-  for(const p of G.players){
-    if(!p.alive) continue;
-    if(it.kind==='weapon') setWeapon(p,it.key);
-    else if(it.kind==='heal') p.hp=Math.min(p.maxHp,p.hp+p.maxHp*0.5);
-    else if(it.kind==='revive') p.reviveCoins=(p.reviveCoins||0)+1;
-    else if(it.kind==='maxhp'){ p.maxHp+=25; p.hp+=25; }
-  }
+function buyShopItem(i, slot){
+  const it=G.shopItems[i]; if(!it) return;
+  const p=G.players[slot]; if(!p || !p.alive) return;
+  it.soldBy=it.soldBy||{};
+  if(it.soldBy[slot]) return;
+  if((p.gold||0)<it.price){ playSfx('hit',0.3); spawnFloater(p.x,p.y-40,'P'+(slot+1)+' 金币不足!','#ff5c5c',22); return; }
+  p.gold-=it.price; it.soldBy[slot]=true; playSfx('bowhit',0.7);
+  if(it.kind==='weapon') setWeapon(p,it.key);
+  else if(it.kind==='heal'){ p.hp=Math.min(p.maxHp,p.hp+p.maxHp*0.5); spawnFloater(p.x,p.y-30,'+50%❤','#7ee081',18); }
+  else if(it.kind==='revive'){ p.reviveCoins=(p.reviveCoins||0)+1; spawnFloater(p.x,p.y-30,'复活币+1','#5cd4ff',18); }
+  else if(it.kind==='maxhp'){ p.maxHp+=25; p.hp+=25; spawnFloater(p.x,p.y-30,'生命上限+25','#7ee081',18); }
   showShopUI(); // 刷新已售状态
 }
 function closeShop(){
@@ -836,7 +846,7 @@ function startGame(sel){ // sel: ['knight','archer']
   }
   for(const p of G.players){ applyMetaToPlayer(p); if(!p.ai) p.auto=(G.autoBattle!==false); }
   G.enemies=[];G.projectiles=[];G.eprojectiles=[];G.pickups=[];G.particles=[];G.floaters=[];G.minions=[];
-  G.wave=0;G.level=0;G.gold=0;G.kills=0;G.bossesDown=0;
+  G.wave=0;G.level=0;G.gold=0;G.kills=0;G.bossesDown=0; // G.gold 弃用: 金币按人独立(p.gold)
   G.camX=WORLD_W/2-VIEW_W/2; G.camY=WORLD_H/2-VIEW_H/2;
   G.interTimer=2.0; G.state='intermission';
   playBgm('battle');
@@ -938,7 +948,8 @@ function updatePlayer(p,dt){
     p._ghostT=(p._ghostT||0)-dt;
     if(p._ghostT<=0){ p._ghostT=0.03; G.dashGhosts.push({x:p.x,y:p.y,face:p.face,color:p.color,life:0.25,maxLife:0.25,def:p.def,heroKey:p.heroKey}); }
   } else {
-    p.vx=mx*p.spd; p.vy=my*p.spd;
+    const spdB = p.shadowT>0? 1.3:1; // 暗影突袭期间移速+30%
+    p.vx=mx*p.spd*spdB; p.vy=my*p.spd*spdB;
   }
   p.x=clamp(p.x+p.vx*dt,30,WORLD_W-30);
   p.y=clamp(p.y+p.vy*dt,30,WORLD_H-30);
@@ -1057,7 +1068,7 @@ function updatePickups(dt){
       pk.x+=pk.vx*dt; pk.y+=pk.vy*dt;
       if(bd<best.r+10){
         pk.dead=true;
-        if(pk.kind==='coin'){ const gv=Math.round(pk.val*(best.goldMul||1)); G.gold+=gv; playSfx('hit',0.2); spawnFloater(best.x,best.y-24,'+'+gv,'#ffd34d',13); }
+        if(pk.kind==='coin'){ const gv=Math.round(pk.val*(best.goldMul||1)); best.gold=(best.gold||0)+gv; playSfx('hit',0.2); spawnFloater(best.x,best.y-24,'+'+gv,'#ffd34d',13); }
         else if(pk.kind==='heart'){ best.hp=Math.min(best.maxHp,best.hp+pk.val); spawnFloater(best.x,best.y-24,'+'+pk.val+'❤','#7ee081',15); }
         else if(pk.kind==='revive'){ best.reviveCoins=(best.reviveCoins||0)+1; spawnFloater(best.x,best.y-24,'复活币!','#5cd4ff',16); }
         else if(pk.kind==='weapon'){ setWeapon(best,pk.val); playSfx('magic',0.5); spawnParticles(best.x,best.y,WEAPONS[pk.val].color,10,120,0.4,4); }
