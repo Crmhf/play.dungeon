@@ -48,6 +48,7 @@ const ENEMY_TYPES = {
   mushroom: { dir:'Mushroom', sheet:'Run (32x32).png',      fw:32, fh:32, ai:'chase',  hp:30, spd:65,  dmg:8,  gold:4, scale:2.2 },
   plant:    { dir:'Plant',    sheet:'Attack (44x42).png',   fw:44, fh:42, ai:'ranged', hp:50, spd:0,   dmg:10, gold:6, scale:2.2, proj:'seed', faceLeft:true },
   chameleon:{ dir:'Chameleon',sheet:'Run (84x38).png',      fw:84, fh:38, ai:'stealth',hp:48, spd:90,  dmg:13, gold:8, scale:2.0 },
+  turtle:   { dir:'Turtle',   sheet:'Spikes out (44x26).png',fw:44, fh:26, ai:'chase',  hp:95, spd:45,  dmg:14, gold:9, scale:2.4 }, // 尖刺龟: 高血坦克前排
   skeleton: { frames:'assets/sprites/enemies/2dpd/skeleton1/v1/skeleton_v1_%d.png', nframes:4, ai:'summoner', hp:60, spd:60, dmg:12, gold:9, scale:2.6 },
   vampire:  { frames:'assets/sprites/enemies/2dpd/vampire/v1/vampire_v1_%d.png', nframes:4, ai:'charge', hp:80, spd:95, dmg:18, gold:12, scale:2.6 },
 };
@@ -70,10 +71,10 @@ const HERO_TYPES = {
 // 关卡主题
 const LEVEL_DEFS = [
   { name:'暗黑地牢', tint:'#6a4a9a', fog:'rgba(40,20,70,0.35)', pool:['slime','bat','chicken'] },
-  { name:'阴森墓地', tint:'#3a6a4a', fog:'rgba(15,50,30,0.35)', pool:['slime','bat','chicken','bunny','angrypig'] },
-  { name:'沙石古堡', tint:'#b06a3a', fog:'rgba(90,45,15,0.32)', pool:['angrypig','skull','snail','mushroom','bunny'] },
-  { name:'火焰深渊', tint:'#c04a20', fog:'rgba(90,20,5,0.35)',  pool:['skull','rino','bee','trunk','plant'] },
-  { name:'万圣夜宴', tint:'#9a4ab0', fog:'rgba(60,15,80,0.35)', pool:['vampire','chameleon','ghost','skeleton','trunk','bee'] },
+  { name:'阴森墓地', tint:'#3a6a4a', fog:'rgba(15,50,30,0.35)', pool:['slime','bat','chicken','bunny','angrypig','turtle'] },
+  { name:'沙石古堡', tint:'#b06a3a', fog:'rgba(90,45,15,0.32)', pool:['angrypig','skull','snail','mushroom','bunny','turtle'] },
+  { name:'火焰深渊', tint:'#c04a20', fog:'rgba(90,20,5,0.35)',  pool:['skull','rino','bee','trunk','plant','turtle'] },
+  { name:'万圣夜宴', tint:'#9a4ab0', fog:'rgba(60,15,80,0.35)', pool:['vampire','chameleon','ghost','skeleton','trunk','bee','turtle'] },
 ];
 
 // 武器定义: 改变攻击手感(伤害/攻速/范围/特效/元素)
@@ -376,11 +377,11 @@ function playerDash(p){
 }
 
 // ---------- 敌人 ----------
-function makeEnemy(type, x, y, hpMul=1){
+function makeEnemy(type, x, y, hpMul=1, dmgMul=1){
   const t=ENEMY_TYPES[type];
   const r = t.fw? (t.fw*t.scale*0.32) : 18;
   return { type, def:t, x, y, vx:0, vy:0, kvx:0, kvy:0, r,
-    hp: t.hp*hpMul, maxHp: t.hp*hpMul, spd:t.spd, dmg:t.dmg,
+    hp: t.hp*hpMul, maxHp: t.hp*hpMul, spd:t.spd, dmg:t.dmg*dmgMul,
     mass: Math.max(0.5, r/22), // 质量: 越大越难击退
     face:1, animT:rand(0,1), hitT:0, alive:true, spawnT:0.35, deathT:-1, // spawnT: 出生弹出 / deathT: 死亡消散
     aiT:0, aiState:'idle', chargeDx:0, chargeDy:0, stealth:0, shootCd:rand(1,2),
@@ -391,7 +392,7 @@ function makeBoss(levelIdx){
   // BOSS 基于关卡主题放大
   const base = ['angrypig','skull','trunk','vampire','vampire'][levelIdx] || 'angrypig';
   const e = makeEnemy(base, WORLD_W/2, 200, 8 + levelIdx*4);
-  e.isBoss=true; e.r*=2.4; e.dmg*=1.5; e.spd*=0.9; e.gold=50+levelIdx*20;
+  e.isBoss=true; e.r*=2.4; e.dmg*=1.5+levelIdx*0.15; e.spd*=0.9; e.gold=50+levelIdx*20;
   e.mass=10; // Boss 重, 免疫击退在 damageEnemy 判断
   e.bossPhase=0; e.scaleMul=2.4;
   if(levelIdx===4){ e.pumpkinKing=true; } // 南瓜王
@@ -658,15 +659,22 @@ function startWave(){
 
   if(isBossWave){
     G.enemies.push(makeBoss(lvl));
+    // Boss 护卫小队(4只本关小怪), 避免Boss波太空
+    const pool=LEVEL_DEFS[lvl].pool;
+    for(let i=0;i<4;i++){
+      const a=i/4*Math.PI*2;
+      G.enemies.push(makeEnemy(pool[irand(0,pool.length-1)], WORLD_W/2+Math.cos(a)*220, 200+Math.sin(a)*160, 1+lvl*0.5));
+    }
     spawnFloater(WORLD_W/2, 200, '⚠ BOSS 出现 ⚠', '#ff5c5c', 40);
     playBgm('boss'); addShake(10,0.4);
   } else {
     const pool=LEVEL_DEFS[lvl].pool;
-    const count = 8 + G.wave*3;                 // 递增数量
-    const hpMul = 1 + (G.wave-1)*0.12;           // 递增血量
+    const count = 10 + G.wave*4;                // 递增数量(压力曲线)
+    const hpMul = 1 + (G.wave-1)*0.15;           // 递增血量
+    const dmgMul = 1 + (G.wave-1)*0.05;          // 递增伤害(避免后期挠痒痒)
     for(let i=0;i<count;i++){
       const type=pool[irand(0,pool.length-1)];
-      G.spawnQueue.push({type, hpMul});
+      G.spawnQueue.push({type, hpMul, dmgMul});
     }
     G.spawnTimer=0;
     if(G.bgmNow!=='battle') playBgm('battle');
@@ -683,15 +691,15 @@ function spawnFromQueue(dt){
   if(!G.spawnQueue.length) return;
   G.spawnTimer-=dt;
   if(G.spawnTimer<=0){
-    G.spawnTimer=0.35;
-    const batch=Math.min(4,G.spawnQueue.length);
+    G.spawnTimer=0.3;
+    const batch=Math.min(5,G.spawnQueue.length); // 每批5只, 压力来得更快
     for(let i=0;i<batch;i++){
       const s=G.spawnQueue.shift();
       // 边缘生成
       const side=irand(0,3); let x,y;
       if(side===0){x=rand(60,WORLD_W-60);y=60;} else if(side===1){x=rand(60,WORLD_W-60);y=WORLD_H-60;}
       else if(side===2){x=60;y=rand(60,WORLD_H-60);} else {x=WORLD_W-60;y=rand(60,WORLD_H-60);}
-      G.enemies.push(makeEnemy(s.type,x,y,s.hpMul));
+      G.enemies.push(makeEnemy(s.type,x,y,s.hpMul,s.dmgMul||1));
       spawnParticles(x,y,'#9a4ab0',6,80,0.4,3);
     }
   }
@@ -704,7 +712,7 @@ function checkWaveClear(){
     G.enemies=G.enemies.filter(e=>e.alive);
     if(G.wave>=TOTAL_WAVES){ doVictory(); return; }
     // 清场奖励: 每位存活玩家各得一份(连击加成结算)
-    const bonus = 10 + G.wave*2 + Math.round(G.comboBest*0.5);
+    const bonus = 8 + Math.ceil(G.wave*1.5) + Math.round(G.comboBest*0.5);
     for(const p of G.players){ if(p.alive) p.gold=(p.gold||0)+bonus; }
     playSfx('bowhit',0.6);
     if(G.comboBest>=8) spawnFloater(WORLD_W/2, WORLD_H/2-40, `清场! 每人+${bonus}💰 (最佳${G.comboBest}连)`, '#ffd34d', 24);
@@ -758,15 +766,17 @@ function nextLevel(){
 const SHOP_SELLABLE=['pumpkin','bonescythe','crossbow','firestaff','froststaff'];
 function rollShop(){
   const items=[];
+  const pm=1+G.level*0.3; // 价格随关卡上浮(经济曲线)
+  const price=b=>Math.round(b*pm/5)*5;
   // 2 把随机武器(不重复)
   const ws=[...SHOP_SELLABLE];
   for(let i=0;i<2 && ws.length;i++){
     const k=ws.splice(irand(0,ws.length-1),1)[0];
-    items.push({ kind:'weapon', key:k, icon:WEAPONS[k].icon, name:WEAPONS[k].name, desc:WEAPONS[k].desc, price:55, color:WEAPONS[k].color });
+    items.push({ kind:'weapon', key:k, icon:WEAPONS[k].icon, name:WEAPONS[k].name, desc:WEAPONS[k].desc, price:price(55), color:WEAPONS[k].color });
   }
-  items.push({ kind:'heal',  icon:'❤️', name:'治疗药水', desc:'全体恢复 50% 生命', price:30, color:'#ff5c8a' });
-  items.push({ kind:'revive',icon:'✚',  name:'复活币',   desc:'队友倒地时原地复活', price:40, color:'#5cd4ff' });
-  items.push({ kind:'maxhp', icon:'🛡️', name:'生命强化', desc:'全体 +25 最大生命', price:50, color:'#7ee081' });
+  items.push({ kind:'heal',  icon:'❤️', name:'治疗药水', desc:'全体恢复 50% 生命', price:price(30), color:'#ff5c8a' });
+  items.push({ kind:'revive',icon:'✚',  name:'复活币',   desc:'队友倒地时原地复活', price:price(40), color:'#5cd4ff' });
+  items.push({ kind:'maxhp', icon:'🛡️', name:'生命强化', desc:'全体 +25 最大生命', price:price(50), color:'#7ee081' });
   G.shopItems=items;
 }
 function openShop(){
@@ -993,8 +1003,10 @@ function updateAIPlayer(p,dt){
     const desired = p.def.arc? 50 : 280; // 近战贴近 / 远程保持距离
     if(d>desired+20){ mx=Math.cos(p.aimAngle); my=Math.sin(p.aimAngle); }
     else if(d<desired-20 && !p.def.arc){ mx=-Math.cos(p.aimAngle); my=-Math.sin(p.aimAngle); }
-    // 自动攻击
-    if(p.atkCd<=0 && d < p.range*1.1+40){ p.atkCd=p.rate*p.rateMul; playerAttack(p); }
+    // 自动攻击(射程按职业+升级倍率, 含武器)
+    const w=p.weapon?WEAPONS[p.weapon]:null;
+    const aiRange=p.def.range*p.rangeMul*(w?w.rangeMul:1);
+    if(p.atkCd<=0 && d < aiRange*1.1+40){ p.atkCd=p.rate*p.rateMul; playerAttack(p); }
     // 危险时闪避
     if(d<70 && p.dashCd<=0 && Math.random()<0.04){ playerDash(p); }
     // 技能好了就用(怪多时)
