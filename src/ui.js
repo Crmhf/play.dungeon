@@ -143,7 +143,8 @@ function showShopUI(){
     const d=document.createElement('div');
     d.className='shop-card';
     const btns=G.players.map((p,si)=>{
-      const sold=!!it.soldBy[si];
+      const consumable = it.kind==='heal'||it.kind==='revive'||it.kind==='maxhp'; // 消耗品可重复买
+      const sold=!consumable && !!it.soldBy[si];
       const afford=(p.gold||0)>=it.price;
       const cls=sold?'sold':(afford?'':'no');
       return `<button class="shop-buy ${cls}" data-i="${i}" data-s="${si}" ${sold||!p.alive?'disabled':''}

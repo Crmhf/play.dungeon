@@ -859,10 +859,11 @@ function openShop(){
 function buyShopItem(i, slot){
   const it=G.shopItems[i]; if(!it) return;
   const p=G.players[slot]; if(!p || !p.alive) return;
+  const repeatable = it.kind==='heal'||it.kind==='revive'||it.kind==='maxhp'; // 消耗品可重复购买(金币出口)
   it.soldBy=it.soldBy||{};
-  if(it.soldBy[slot]) return;
+  if(!repeatable && it.soldBy[slot]) return;
   if((p.gold||0)<it.price){ playSfx('hit',0.3); spawnFloater(p.x,p.y-40,'P'+(slot+1)+' 金币不足!','#ff5c5c',22); return; }
-  p.gold-=it.price; it.soldBy[slot]=true; playSfx('bowhit',0.7);
+  p.gold-=it.price; if(!repeatable) it.soldBy[slot]=true; playSfx('bowhit',0.7);
   if(it.kind==='weapon') setWeapon(p,it.key);
   else if(it.kind==='gear') setGear(p,it.key);
   else if(it.kind==='heal'){ p.hp=Math.min(p.maxHp,p.hp+p.maxHp*0.5); spawnFloater(p.x,p.y-30,'+50%❤','#7ee081',18); }
@@ -1089,13 +1090,17 @@ function updateAIPlayer(p,dt){
     if(leader){ const d=dist(p.x,p.y,leader.x,leader.y);
       if(d>90){ const a=angleTo(p.x,p.y,leader.x,leader.y); mx=Math.cos(a); my=Math.sin(a); } }
   }
+  // 躲避激活的陷阱(AI不再站刺上输出)
+  for(const tr of G.traps){ if(tr.active){ const td=dist(p.x,p.y,tr.x,tr.y);
+    if(td<tr.r+50){ const ta=angleTo(tr.x,tr.y,p.x,p.y); mx+=Math.cos(ta)*1.3; my+=Math.sin(ta)*1.3; } } }
   const l=Math.hypot(mx,my); if(l>0){mx/=l;my/=l;}
   if(p.dashing>0){ // AI 闪避位移(与玩家一致, 近战更远)
     p.dashing-=dt;
     const dashSpd=p.spd*3.2*p.dashMul*(p.def.dash||1);
     p.vx=p.dashDx*dashSpd; p.vy=p.dashDy*dashSpd;
   } else {
-    p.vx=mx*p.spd; p.vy=my*p.spd;
+    const spdB = p.shadowT>0? 1.3:1; // 暗影突袭移速加成(AI一致)
+    p.vx=mx*p.spd*spdB; p.vy=my*p.spd*spdB;
   }
   p.x=clamp(p.x+p.vx*dt,30,WORLD_W-30);
   p.y=clamp(p.y+p.vy*dt,30,WORLD_H-30);  if(l>0){
