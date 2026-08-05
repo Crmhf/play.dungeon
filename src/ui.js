@@ -21,10 +21,13 @@ function drawHUD(ctx){
     drawBar(ctx,x,y+18,180,12,p.hp/p.maxHp, p.alive?'#7ee081':'#444');
     ctx.fillStyle='#fff';ctx.font='10px "Press Start 2P",monospace';
     ctx.fillText(`${Math.ceil(p.hp)}/${Math.ceil(p.maxHp)}`,x+186,y+28);
-    // 当前武器
+    // 当前武器 + 装备图标
     if(p.weapon && WEAPONS[p.weapon]){ const w=WEAPONS[p.weapon];
       ctx.textAlign='left'; ctx.font='13px sans-serif'; ctx.fillStyle=w.color;
       ctx.fillText(w.icon+' '+w.name, x, y+48); ctx.textAlign='left'; }
+    if(p.gear && GEARS[p.gear]){ const g=GEARS[p.gear];
+      ctx.textAlign='left'; ctx.font='12px sans-serif'; ctx.fillStyle=g.color;
+      ctx.fillText(g.icon, x+108, y+48); }
     // 专属技能名 + 冷却倒计时(秒)
     if(p.def.skill){ const sk=p.def.skill; const cd=p.skillCd>0;
       ctx.textAlign='left'; ctx.font='11px "Press Start 2P",monospace';
@@ -196,6 +199,7 @@ function buildSelect(){
     const stars='★'.repeat(Math.round(t.hp/48))+'☆'.repeat(5-Math.round(t.hp/48));
     d.innerHTML=`<div class="hero-name">${t.name}</div><div class="hero-desc">${t.desc}</div>
       <div class="hero-skill" style="font-size:9px;color:${t.skill.color};line-height:1.6;min-height:28px">✦${t.skill.name}<br><span style="color:#8a7ab0">${t.skill.desc}</span></div>
+      <div class="hero-passive" style="font-size:8px;color:#ffd34d;line-height:1.5;min-height:22px">◆${t.passive.name}<br><span style="color:#8a7ab0">${t.passive.desc}</span></div>
       <div class="hero-hp">${stars}</div>`;
     d.onclick=()=>{ if(selection.includes(k)){selection=selection.filter(x=>x!==k);d.classList.remove('sel');}
       else if(selection.length<2){selection.push(k);d.classList.add('sel');}

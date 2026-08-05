@@ -55,16 +55,19 @@ const ENEMY_TYPES = {
 
 // 英雄定义: 取自 Dungeon_Character.png (16px 网格) 与 priest 逐帧
 // 平衡设计: 近战贴脸冒险换最高伤害(盗贼78/骑士52 DPS), 远程用伤害换安全与功能(弓手36/法师32 DPS)
-//           近战血厚(骑士240), 远程血薄(法师100); 技能CD与威力、覆盖率匹配定位
-// skill: { name 技能名 / cd 冷却 / color 特效色 / desc 描述 }
+// passive: 英雄专属天生被动 — 骑士减伤 / 弓手鹰眼暴击 / 法师技能急速 / 刺客高暴击
 const HERO_TYPES = {
   knight: { name:'骑士', desc:'近战肉盾 · 横扫一片', sheet:'chars', col:0, row:0, hp:240, spd:150, atk:26, rate:0.50, range:70,  arc:true,  projSpeed:0,   color:'#c8d0e0', sfx:'sword',
+    passive:{ key:'damageReduce', val:0.15, name:'圣盾体质', desc:'受伤减免15%' },
     skill:{ name:'旋风斩', cd:7, color:'#9adcff', desc:'横扫+减速敌人+3秒减伤50%' } },
   archer: { name:'弓手', desc:'远程安全输出 · 穿透箭', sheet:'chars', col:6, row:3, hp:115, spd:165, atk:13, rate:0.36, range:420, arc:false, projSpeed:520, pierce:true, color:'#a8e063', sfx:'bow',
+    passive:{ key:'critChance', val:0.18, name:'鹰眼', desc:'天生暴击率18%' },
     skill:{ name:'天降箭雨', cd:9, color:'#a8e063', desc:'目标区域倾泻24支落箭' } },
   mage:   { name:'法师', desc:'中距AOE · 弹射灼烧', sheet:'priest', variant:1, hp:100, spd:140, atk:16, rate:0.50, range:380, arc:false, projSpeed:420, bounce:2, aoe:60, color:'#b06ce0', sfx:'magic',
+    passive:{ key:'skillCdMul', val:0.8, name:'奥术亲和', desc:'技能冷却-20%' },
     skill:{ name:'奥术湮灭', cd:12, color:'#e08cff', desc:'大爆炸+灼烧3秒,毁天灭地' } },
   rogue:  { name:'盗贼', desc:'近战爆发 · 刀刀烈火', sheet:'chars', col:0, row:1, hp:115, spd:195, atk:14, rate:0.18, range:64,  arc:true,  projSpeed:0,   dodgeCd:1.3, color:'#e0b25c', sfx:'swing',
+    passive:{ key:'critChance', val:0.22, name:'刺客直觉', desc:'天生暴击率22%' },
     skill:{ name:'暗影突袭', cd:7, color:'#e0b25c', desc:'隐身必暴+加速,重置闪避' } },
 };
 
@@ -79,15 +82,41 @@ const LEVEL_DEFS = [
 
 // 武器定义: 改变攻击手感(伤害/攻速/范围/特效/元素)
 const WEAPONS = {
+  // ---- 近战 ----
   sword:    { name:'铁剑',     icon:'🗡️', cls:'melee',  dmgMul:1.0, rateMul:1.0,  rangeMul:1.0, color:'#c8d0e0', sfx:'sword', desc:'均衡的初始武器' },
   pumpkin:  { name:'南瓜锤',   icon:'🎃', cls:'melee',  dmgMul:1.8, rateMul:1.6,  rangeMul:1.3, knockback:320, aoeWave:true, color:'#ff9540', sfx:'heavy', desc:'重锤!大范围击退+冲击波' },
   bonescythe:{name:'幽灵镰刀', icon:'💀', cls:'melee',  dmgMul:1.3, rateMul:0.85, rangeMul:1.5, lifesteal:0.08, color:'#b06ce0', sfx:'swing', desc:'吸血镰刀,大范围收割' },
+  dagger:   { name:'淬毒双刃', icon:'🔪', cls:'melee',  dmgMul:1.0, rateMul:0.6,  rangeMul:0.9, elem:'poison', poison:6, color:'#8ee05c', sfx:'swing', desc:'剧毒双刃,持续掉血' },
+  flamesword:{name:'烈焰巨剑', icon:'🔥', cls:'melee',  dmgMul:1.5, rateMul:1.2,  rangeMul:1.1, elem:'fire', color:'#ff5c2a', sfx:'sword', desc:'重剑横扫,命中灼烧2秒' },
+  stormhammer:{name:'雷霆战锤',icon:'⚡', cls:'melee',  dmgMul:1.4, rateMul:1.3,  rangeMul:1.2, chain:0.3, color:'#ffe95c', sfx:'heavy', desc:'命中30%触发连锁闪电' },
+  shadowblade:{name:'影刃',    icon:'🌑', cls:'melee',  dmgMul:0.9, rateMul:0.5,  rangeMul:0.9, critBonus:0.15, color:'#8a7ab0', sfx:'swing', desc:'极快,暴击率+15%' },
+  // ---- 远程 ----
   bow:      { name:'短弓',     icon:'🏹', cls:'ranged', dmgMul:1.0, rateMul:1.0,  rangeMul:1.0, color:'#a8e063', sfx:'bow', desc:'均衡的初始弓' },
   crossbow: { name:'连弩',     icon:'⚙️', cls:'ranged', dmgMul:0.45, rateMul:0.7, rangeMul:1.1, shots:2, color:'#ffd34d', sfx:'bow', desc:'双发连弩,射速极快(单箭伤害低)' },
   firestaff:{ name:'火焰法杖', icon:'🔥', cls:'ranged', dmgMul:1.25, rateMul:1.1, rangeMul:1.0, elem:'fire', aoe:50, color:'#ff5c2a', sfx:'magic', desc:'火焰弹,命中爆炸溅射' },
   froststaff:{name:'寒霜法杖', icon:'❄️', cls:'ranged', dmgMul:1.0, rateMul:0.9,  rangeMul:1.2, elem:'frost', slow:0.5, color:'#5cd4ff', sfx:'magic', desc:'寒霜弹,减速敌人(功能向)' },
-  dagger:   { name:'淬毒双刃', icon:'🔪', cls:'melee',  dmgMul:1.0, rateMul:0.6,  rangeMul:0.9, elem:'poison', poison:6, color:'#8ee05c', sfx:'swing', desc:'剧毒双刃,持续掉血' },
+  venombow: { name:'剧毒之弓', icon:'🐍', cls:'ranged', dmgMul:0.9, rateMul:0.9,  rangeMul:1.0, elem:'poison', poison:5, color:'#8ee05c', sfx:'bow', desc:'箭矢淬毒,持续掉血3秒' },
+  stormstaff:{name:'雷霆法杖', icon:'🌩️', cls:'ranged', dmgMul:1.1, rateMul:1.0,  rangeMul:1.0, chain:0.35, color:'#ffe95c', sfx:'magic', desc:'命中35%触发连锁闪电' },
+  icebow:   { name:'寒冰弓',   icon:'🧊', cls:'ranged', dmgMul:0.95, rateMul:0.95,rangeMul:1.1, slow:0.5, color:'#9adcff', sfx:'bow', desc:'冰箭减速,风筝神器' },
 };
+
+// 装备定义(每人1个装备槽, 可替换; apply/remove 精确互逆)
+const GEARS = {
+  knightplate:{ name:'骑士铠甲', icon:'🛡️', price:60, color:'#c8d0e0', desc:'生命+60 移速-5%',   apply:p=>{p.maxHp+=60;p.hp+=60;p.spd*=0.95;}, remove:p=>{p.maxHp-=60;p.hp=Math.min(p.hp,p.maxHp);p.spd/=0.95;} },
+  leather:    { name:'迅捷皮甲', icon:'🥋', price:50, color:'#a8e063', desc:'生命+25 移速+10%',   apply:p=>{p.maxHp+=25;p.hp+=25;p.spd*=1.10;}, remove:p=>{p.maxHp-=25;p.hp=Math.min(p.hp,p.maxHp);p.spd/=1.10;} },
+  fang:       { name:'吸血牙坠', icon:'🧛', price:65, color:'#ff5c8a', desc:'吸血+8%',          apply:p=>p.lifesteal+=0.08, remove:p=>p.lifesteal-=0.08 },
+  boots:      { name:'疾风之靴', icon:'👢', price:55, color:'#5cd4ff', desc:'移速+15%',          apply:p=>p.spd*=1.15, remove:p=>p.spd/=1.15 },
+  ring:       { name:'守护之戒', icon:'💍', price:60, color:'#ffd34d', desc:'受伤无敌+0.4s',      apply:p=>p.iframeBonus+=0.4, remove:p=>p.iframeBonus-=0.4 },
+  eagle:      { name:'鹰眼吊坠', icon:'🦅', price:55, color:'#a8e063', desc:'射程+15%',          apply:p=>p.rangeMul*=1.15, remove:p=>p.rangeMul/=1.15 },
+  belt:       { name:'力量腰带', icon:'🎗️', price:65, color:'#ff9540', desc:'伤害+12%',          apply:p=>p.dmgMul*=1.12, remove:p=>p.dmgMul/=1.12 },
+  clover:     { name:'幸运四叶草',icon:'🍀', price:50, color:'#7ee081', desc:'金币获取+25%',      apply:p=>p.goldMul=(p.goldMul||1)*1.25, remove:p=>p.goldMul=(p.goldMul||1)/1.25 },
+};
+function setGear(p, key){
+  const g=GEARS[key]; if(!g) return;
+  if(p.gear && GEARS[p.gear]) GEARS[p.gear].remove(p); // 卸下旧装备
+  p.gear=key; g.apply(p);
+  spawnFloater(p.x,p.y-30, g.icon+' '+g.name, g.color, 15);
+}
 
 // 升级池
 const UPGRADES = [
@@ -249,6 +278,11 @@ function makePlayer(heroKey, slot){ // slot 0=P1 1=P2
     killExplode:false, minions:0, gold:0, // gold: 每人独立金币
     atkCd:0, dashCd:0, dashing:0, dashDx:0, dashDy:0, invuln:0,
     skillCd:0, skillMax:t.skill.cd, guardT:0, shadowT:0, // guardT: 骑士减伤 / shadowT: 盗贼必暴
+    gear:null, // 装备槽(GEARS)
+    // 英雄专属天生被动
+    damageReduce: t.passive&&t.passive.key==='damageReduce'? t.passive.val:0,
+    critChance:   t.passive&&t.passive.key==='critChance'?   t.passive.val:0.1,
+    skillCdMul:   t.passive&&t.passive.key==='skillCdMul'?   t.passive.val:1,
     animT:0, walkT:0, state:'idle',
     alive:true, color:t.color,
     ai:false, auto:true, // ai=AI队友 / auto=自动战斗
@@ -294,6 +328,9 @@ function playerAttack(p){
       if(da < 1.1){
         damageEnemy(e, baseDmg, p, {knockback:(w&&w.knockback)||160, elem});
         if(w&&w.poison){ e.poison={dps:w.poison,t:3}; }
+        if(w&&w.elem==='fire'&&e.alive){ e.burn={dps:4+baseDmg*0.12,t:2}; } // 烈焰巨剑灼烧
+        if(w&&w.slow){ e.slowT=1.5; e.slowMul=w.slow; }
+        if(w&&w.chain && Math.random()<w.chain){ chainLightning(e, baseDmg*0.5, p); } // 雷霆战锤
         hitAny=true;
       }
     }
@@ -319,6 +356,7 @@ function playerAttack(p){
         x:p.x,y:p.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,
         dmg:baseDmg, r:8, pierce:t.pierce, bounce:t.bounce||0, aoe:(w&&w.aoe)||t.aoe||0,
         slow:(w&&w.slow)||0, elem, color:atkColor, owner:p, life: range/spd, kind:w?w.sfx:t.sfx,
+        poison:(w&&w.poison)||0, chain:(w&&w.chain)||0,
       });
       // 枪口闪光(短促亮粒)
       G.particles.push({x:p.x+Math.cos(a)*p.r, y:p.y+Math.sin(a)*p.r, vx:Math.cos(a)*40, vy:Math.sin(a)*40, life:0.08, maxLife:0.08, color:'#fff', size:7});
@@ -329,7 +367,8 @@ function playerAttack(p){
 function playerSkill(p){
   if(p.skillCd>0) return;
   const sk=p.def.skill;
-  p.skillCd=p.skillMax;
+  p.skillCd=p.skillMax*(p.skillCdMul||1); // 法师奥术亲和: CD-20%
+  p.skillCdMax=p.skillCd; // 冷却饼图基准
   // 释放时头顶显示技能名
   spawnFloater(p.x, p.y-p.r-24, sk.name+'!', sk.color, 22);
   if(p.heroKey==='knight'){ // 旋风斩: 大横扫+减速控制 + 3秒减伤护盾(肉盾: 控场承伤)
@@ -403,9 +442,13 @@ function makeBoss(levelIdx){
 function damageEnemy(e, dmg, source, opts){
   if(!e.alive) return;
   opts=opts||{};
-  // 暴击(盗贼暗影突袭期间刀刀暴击)
+  // 暴击(盗贼暗影突袭期间刀刀暴击; 英雄被动/影刃加成暴击率)
   let crit=false;
-  if(source && !opts.noCrit){ const cr=source.shadowT>0?1:(source.critChance||0.1); if(Math.random()<cr){ crit=true; dmg*=2; } }
+  if(source && !opts.noCrit){
+    const wpn=source.weapon?WEAPONS[source.weapon]:null;
+    const cr=source.shadowT>0?1:((source.critChance||0.1)+((wpn&&wpn.critBonus)||0));
+    if(Math.random()<cr){ crit=true; dmg*=2; }
+  }
   // 连击倍率
   if(source) dmg*=G.comboMul;
   e.hp-=dmg; e.hitT=0.12;
@@ -431,6 +474,21 @@ function damageEnemy(e, dmg, source, opts){
   if(e.hp<=0){ killEnemy(e, source); }
 }
 
+// 连锁闪电(雷霆战锤/雷霆法杖): 从命中目标跳到附近最多2个敌人
+function chainLightning(e, dmg, source, n=2){
+  playSfx('magic',0.3);
+  let cur=e; const hitSet=new Set([e]);
+  for(let i=0;i<n;i++){
+    let best=null,bd=1e9;
+    for(const o of G.enemies){ if(!o.alive||hitSet.has(o)) continue; const d=dist(cur.x,cur.y,o.x,o.y); if(d<bd&&d<220){bd=d;best=o;} }
+    if(!best) break;
+    for(let j=0;j<5;j++){ const tt=j/4;
+      G.particles.push({x:lerp(cur.x,best.x,tt),y:lerp(cur.y,best.y,tt),vx:0,vy:0,life:0.15,maxLife:0.15,color:'#ffe95c',size:3}); }
+    damageEnemy(best,dmg,source,{noCrit:true,elem:'thunder'});
+    hitSet.add(best); cur=best;
+  }
+}
+
 function killEnemy(e, source){
   if(!e.alive) return;
   e.alive=false; e.deathT=0; e.hitT=0; G.kills++; // deathT: 播放消散动画后彻底移除
@@ -448,10 +506,14 @@ function killEnemy(e, source){
   for(let i=0;i<Math.min(5,Math.ceil(gd/3));i++) G.pickups.push({x:e.x+rand(-16,16),y:e.y+rand(-16,16),vx:rand(-60,60),vy:rand(-60,60),kind:'coin',val:Math.ceil(gd/Math.min(5,Math.ceil(gd/3))),life:20,t:0});
   if(Math.random()<0.06) G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'heart',val:20,life:20,t:0});
   if(Math.random()<0.03) G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'revive',val:1,life:25,t:0});
-  // 武器掉落: BOSS必掉 / 精英小概率
-  if(e.isBoss || Math.random()<0.02){
-    const drops=['pumpkin','bonescythe','crossbow','firestaff','froststaff'];
-    G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'weapon',val:drops[irand(0,drops.length-1)],life:30,t:0});
+  // 武器/装备掉落: BOSS必掉武器+装备 / 精英小概率
+  if(e.isBoss){
+    G.pickups.push({x:e.x-20,y:e.y,vx:0,vy:0,kind:'weapon',val:SHOP_SELLABLE[irand(0,SHOP_SELLABLE.length-1)],life:30,t:0});
+    G.pickups.push({x:e.x+20,y:e.y,vx:0,vy:0,kind:'gear',val:GEAR_SELLABLE[irand(0,GEAR_SELLABLE.length-1)],life:30,t:0});
+  } else if(Math.random()<0.02){
+    G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'weapon',val:SHOP_SELLABLE[irand(0,SHOP_SELLABLE.length-1)],life:30,t:0});
+  } else if(Math.random()<0.012){
+    G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'gear',val:GEAR_SELLABLE[irand(0,GEAR_SELLABLE.length-1)],life:30,t:0});
   }
   if(source && source.killExplode){ playSfx('explode',0.6);
     for(const o of G.enemies){ if(o.alive&&dist(e.x,e.y,o.x,o.y)<110) damageEnemy(o,20,source,{noCrit:true}); }
@@ -606,6 +668,7 @@ function updateBoss(e, dt, p, d, a){
 function hurtPlayer(p, dmg, from){
   if(p.invuln>0||!p.alive) return;
   if(p.guardT>0) dmg*=0.5; // 骑士旋风斩护盾: 减伤50%
+  if(p.damageReduce>0) dmg*=(1-p.damageReduce); // 骑士圣盾体质: 常驻减免15%
   p.hp-=dmg; p.invuln=0.6+p.iframeBonus;
   playSfx('hurt',0.7); addShake(6,0.15); hitStop(0.04);
   p.hurtT=0.2; // 受击缩放
@@ -763,7 +826,8 @@ function nextLevel(){
 }
 
 // ========== 商店系统 (每关过关后) ==========
-const SHOP_SELLABLE=['pumpkin','bonescythe','crossbow','firestaff','froststaff'];
+const SHOP_SELLABLE=['pumpkin','bonescythe','crossbow','firestaff','froststaff','flamesword','stormhammer','shadowblade','venombow','stormstaff','icebow'];
+const GEAR_SELLABLE=Object.keys(GEARS);
 function rollShop(){
   const items=[];
   const pm=1+G.level*0.3; // 价格随关卡上浮(经济曲线)
@@ -774,9 +838,15 @@ function rollShop(){
     const k=ws.splice(irand(0,ws.length-1),1)[0];
     items.push({ kind:'weapon', key:k, icon:WEAPONS[k].icon, name:WEAPONS[k].name, desc:WEAPONS[k].desc, price:price(55), color:WEAPONS[k].color });
   }
-  items.push({ kind:'heal',  icon:'❤️', name:'治疗药水', desc:'全体恢复 50% 生命', price:price(30), color:'#ff5c8a' });
+  // 2 件随机装备(不重复)
+  const gs=[...GEAR_SELLABLE];
+  for(let i=0;i<2 && gs.length;i++){
+    const k=gs.splice(irand(0,gs.length-1),1)[0];
+    items.push({ kind:'gear', key:k, icon:GEARS[k].icon, name:GEARS[k].name, desc:GEARS[k].desc, price:price(GEARS[k].price), color:GEARS[k].color });
+  }
+  items.push({ kind:'heal',  icon:'❤️', name:'治疗药水', desc:'恢复 50% 生命', price:price(30), color:'#ff5c8a' });
   items.push({ kind:'revive',icon:'✚',  name:'复活币',   desc:'队友倒地时原地复活', price:price(40), color:'#5cd4ff' });
-  items.push({ kind:'maxhp', icon:'🛡️', name:'生命强化', desc:'全体 +25 最大生命', price:price(50), color:'#7ee081' });
+  items.push({ kind:'maxhp', icon:'🛡️', name:'生命强化', desc:'+25 最大生命', price:price(50), color:'#7ee081' });
   G.shopItems=items;
 }
 function openShop(){
@@ -794,6 +864,7 @@ function buyShopItem(i, slot){
   if((p.gold||0)<it.price){ playSfx('hit',0.3); spawnFloater(p.x,p.y-40,'P'+(slot+1)+' 金币不足!','#ff5c5c',22); return; }
   p.gold-=it.price; it.soldBy[slot]=true; playSfx('bowhit',0.7);
   if(it.kind==='weapon') setWeapon(p,it.key);
+  else if(it.kind==='gear') setGear(p,it.key);
   else if(it.kind==='heal'){ p.hp=Math.min(p.maxHp,p.hp+p.maxHp*0.5); spawnFloater(p.x,p.y-30,'+50%❤','#7ee081',18); }
   else if(it.kind==='revive'){ p.reviveCoins=(p.reviveCoins||0)+1; spawnFloater(p.x,p.y-30,'复活币+1','#5cd4ff',18); }
   else if(it.kind==='maxhp'){ p.maxHp+=25; p.hp+=25; spawnFloater(p.x,p.y-30,'生命上限+25','#7ee081',18); }
@@ -1042,6 +1113,9 @@ function updateProjectiles(dt){
       if(dist(pr.x,pr.y,e.x,e.y)<pr.r+e.r){
         damageEnemy(e,pr.dmg,pr.owner,{elem:pr.elem});
         if(pr.slow){ e.slowT=1.5; e.slowMul=pr.slow; } // 寒霜减速
+        if(pr.poison){ e.poison={dps:pr.poison,t:3}; } // 剧毒之弓
+        if(e.alive&&pr.elem==='fire'){ e.burn={dps:4+pr.dmg*0.12,t:2}; } // 火焰灼烧
+        if(pr.chain && Math.random()<pr.chain){ chainLightning(e, pr.dmg*0.5, pr.owner); } // 雷霆法杖
         if(pr.aoe){ playSfx('explode',0.4); for(const o of G.enemies){if(o.alive&&o!==e&&dist(pr.x,pr.y,o.x,o.y)<pr.aoe)damageEnemy(o,pr.dmg*0.6,pr.owner,{elem:pr.elem,noCrit:true});} spawnParticles(pr.x,pr.y,pr.color,8,140,0.3,3); pr.dead=true; }
         else if(pr.bounce>0){ pr.bounce--; let nb=null,nd=1e9; for(const o of G.enemies){if(o.alive&&o!==e){const d=dist(pr.x,pr.y,o.x,o.y);if(d<nd){nd=d;nb=o;}}} if(nb){const a=angleTo(pr.x,pr.y,nb.x,nb.y);const s=Math.hypot(pr.vx,pr.vy);pr.vx=Math.cos(a)*s;pr.vy=Math.sin(a)*s;} else pr.dead=true; }
         else if(pr.pierce){ pr.pierceHits=(pr.pierceHits||0)+1; if(pr.pierceHits>3)pr.dead=true; }
@@ -1085,6 +1159,7 @@ function updatePickups(dt){
         else if(pk.kind==='heart'){ best.hp=Math.min(best.maxHp,best.hp+pk.val); spawnFloater(best.x,best.y-24,'+'+pk.val+'❤','#7ee081',15); }
         else if(pk.kind==='revive'){ best.reviveCoins=(best.reviveCoins||0)+1; spawnFloater(best.x,best.y-24,'复活币!','#5cd4ff',16); }
         else if(pk.kind==='weapon'){ setWeapon(best,pk.val); playSfx('magic',0.5); spawnParticles(best.x,best.y,WEAPONS[pk.val].color,10,120,0.4,4); }
+        else if(pk.kind==='gear'){ setGear(best,pk.val); playSfx('magic',0.5); spawnParticles(best.x,best.y,GEARS[pk.val].color,10,120,0.4,4); }
         spawnParticles(best.x,best.y,'#ffd34d',5,80,0.3,3);
       }
     }
@@ -1222,8 +1297,9 @@ function drawPlayer(ctx,p){
     ctx.restore(); }
 
   // 技能冷却指示(饼图+剩余秒数)
-  if(p.skillCd>0){ ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.arc(p.x,p.y-p.r-14,6,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#5cd4ff';ctx.beginPath();ctx.arc(p.x,p.y-p.r-14,6,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-p.skillCd/p.skillMax));ctx.fill();
+  if(p.skillCd>0){ const cdBase=p.skillCdMax||p.skillMax;
+    ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.arc(p.x,p.y-p.r-14,6,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#5cd4ff';ctx.beginPath();ctx.arc(p.x,p.y-p.r-14,6,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-p.skillCd/cdBase));ctx.fill();
     ctx.fillStyle='#fff'; ctx.font='bold 10px "Press Start 2P",monospace'; ctx.textAlign='center';
     ctx.strokeStyle='rgba(0,0,0,0.8)'; ctx.lineWidth=2.5;
     const cdTxt=p.skillCd.toFixed(1);
@@ -1341,6 +1417,9 @@ function drawPickup(ctx,pk){
   else if(pk.kind==='weapon'){ const w=WEAPONS[pk.val];
     ctx.fillStyle=w.color;ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText(w.icon,pk.x,pk.y+bob+6);
     if(pk.t<3){ ctx.fillStyle='#fff';ctx.font='bold 10px "Press Start 2P",monospace';ctx.fillText(w.name,pk.x,pk.y+bob+26); }
+  } else if(pk.kind==='gear'){ const g=GEARS[pk.val];
+    ctx.fillStyle=g.color;ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText(g.icon,pk.x,pk.y+bob+6);
+    if(pk.t<3){ ctx.fillStyle='#fff';ctx.font='bold 10px "Press Start 2P",monospace';ctx.fillText(g.name,pk.x,pk.y+bob+26); }
   }
 }
 function drawPortal(ctx,po){
@@ -1404,8 +1483,8 @@ function breakProp(pr){
   if(r<0.4) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'coin',val:irand(3,8),life:20,t:0});
   else if(r<0.55) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'heart',val:15,life:20,t:0});
   else if(r<0.62) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'revive',val:1,life:25,t:0});
-  else if(r<0.7){ const drops=['pumpkin','bonescythe','crossbow','firestaff','froststaff','dagger'];
-    G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'weapon',val:drops[irand(0,drops.length-1)],life:30,t:0}); }
+  else if(r<0.62) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'weapon',val:SHOP_SELLABLE[irand(0,SHOP_SELLABLE.length-1)],life:30,t:0});
+  else if(r<0.68) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'gear',val:GEAR_SELLABLE[irand(0,GEAR_SELLABLE.length-1)],life:30,t:0});
 }
 // 玩家近战/弹道可打碎道具 — 在近战与弹道命中检测里调用
 function tryBreakProps(x,y,rad){

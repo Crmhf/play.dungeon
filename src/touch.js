@@ -90,7 +90,7 @@
     const p=G.players&&G.players[0];
     if(!p) return;
     const el=$('skill-cool'), num=$('skill-cd-num');
-    if(el) el.style.setProperty('--p', (p.skillCd>0? (p.skillCd/p.skillMax*100):0)+'%');
+    if(el) el.style.setProperty('--p', (p.skillCd>0? (p.skillCd/(p.skillCdMax||p.skillMax)*100):0)+'%');
     if(num) num.textContent = p.skillCd>0? p.skillCd.toFixed(1):'';
   },80);
 
