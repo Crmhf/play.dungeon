@@ -435,7 +435,6 @@ function updateEnemy(e, dt){
   if(!p){ e.vx*=0.9; e.vy*=0.9; return; }
   const d=dist(e.x,e.y,p.x,p.y);
   const a=angleTo(e.x,e.y,p.x,p.y);
-  e.face = p.x>=e.x?1:-1;
   const ai=e.def.ai;
 
   if(ai==='chase'){
@@ -477,6 +476,10 @@ function updateEnemy(e, dt){
   // 位置积分 + 世界边界(应用减速)
   e.x=clamp(e.x+e.vx*spdMul*dt, 40, WORLD_W-40);
   e.y=clamp(e.y+e.vy*spdMul*dt, 40, WORLD_H-40);
+
+  // 朝向: 面向实际移动方向(不倒着走); 停下/蓄力时面向玩家
+  if(Math.abs(e.vx)>6) e.face = e.vx>=0?1:-1;
+  else e.face = p.x>=e.x?1:-1;
 
   // 接触伤害
   if(e.touchCd<=0 && d < e.r+p.r-4 && p.invuln<=0){
@@ -842,12 +845,22 @@ function updatePlayer(p,dt){
   }
   p.x=clamp(p.x+p.vx*dt,30,WORLD_W-30);
   p.y=clamp(p.y+p.vy*dt,30,WORLD_H-30);
-  if(l>0){ p.walkT+=dt; p.face=mx>=0?1:-1; p.state='run'; } else p.state='idle';
-  p.animT+=dt;
 
   // 攻击朝向最近怪 (辅助瞄准: 自动锁定最近目标)
   const tgt=playerNearestEnemy(p);
   if(tgt) p.aimAngle=angleTo(p.x,p.y,tgt.x,tgt.y);
+
+  // 朝向: 怪在近身交战距离内→面向怪; 否则面向移动方向(不倒着走)
+  if(l>0){
+    p.walkT+=dt; p.state='run';
+    const engage = (p.def.arc? 150 : 380) * p.rangeMul;
+    if(tgt && dist(p.x,p.y,tgt.x,tgt.y) < engage) p.face = Math.cos(p.aimAngle)>=0?1:-1;
+    else p.face = mx>=0?1:-1;
+  } else {
+    p.state='idle';
+    if(tgt && dist(p.x,p.y,tgt.x,tgt.y) < 480) p.face = Math.cos(p.aimAngle)>=0?1:-1;
+  }
+  p.animT+=dt;
 
   // 自动战斗开关: 有怪且处于攻击范围时自动出手
   const wantAtk = keys[map.atk] || (p.auto && tgt);
@@ -886,7 +899,15 @@ function updateAIPlayer(p,dt){
   p.vx=mx*p.spd; p.vy=my*p.spd;
   p.x=clamp(p.x+p.vx*dt,30,WORLD_W-30);
   p.y=clamp(p.y+p.vy*dt,30,WORLD_H-30);
-  if(l>0){ p.walkT+=dt; p.face=mx>=0?1:-1; p.state='run'; } else p.state='idle';
+  if(l>0){
+    p.walkT+=dt; p.state='run';
+    // 朝向: 面向移动方向(不倒着走); 交战贴脸时除外
+    if(tgt && dist(p.x,p.y,tgt.x,tgt.y) < (p.def.arc?90:70)) p.face = Math.cos(p.aimAngle)>=0?1:-1;
+    else p.face = mx>=0?1:-1;
+  } else {
+    p.state='idle';
+    if(tgt) p.face = Math.cos(p.aimAngle)>=0?1:-1;
+  }
   p.animT+=dt;
 }
 
