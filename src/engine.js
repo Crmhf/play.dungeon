@@ -67,6 +67,18 @@ const LEVEL_DEFS = [
   { name:'万圣夜宴', tint:'#9a4ab0', fog:'rgba(60,15,80,0.35)', pool:['vampire','chameleon','ghost','skeleton','trunk','bee'] },
 ];
 
+// 武器定义: 改变攻击手感(伤害/攻速/范围/特效/元素)
+const WEAPONS = {
+  sword:    { name:'铁剑',     icon:'🗡️', cls:'melee',  dmgMul:1.0, rateMul:1.0,  rangeMul:1.0, color:'#c8d0e0', sfx:'sword', desc:'均衡的初始武器' },
+  pumpkin:  { name:'南瓜锤',   icon:'🎃', cls:'melee',  dmgMul:1.8, rateMul:1.6,  rangeMul:1.3, knockback:320, aoeWave:true, color:'#ff9540', sfx:'heavy', desc:'重锤!大范围击退+冲击波' },
+  bonescythe:{name:'幽灵镰刀', icon:'💀', cls:'melee',  dmgMul:1.3, rateMul:0.85, rangeMul:1.5, lifesteal:0.08, color:'#b06ce0', sfx:'swing', desc:'吸血镰刀,大范围收割' },
+  bow:      { name:'短弓',     icon:'🏹', cls:'ranged', dmgMul:1.0, rateMul:1.0,  rangeMul:1.0, color:'#a8e063', sfx:'bow', desc:'均衡的初始弓' },
+  crossbow: { name:'连弩',     icon:'⚙️', cls:'ranged', dmgMul:0.8, rateMul:0.6,  rangeMul:1.1, shots:2, color:'#ffd34d', sfx:'bow', desc:'双发连弩,射速极快' },
+  firestaff:{ name:'火焰法杖', icon:'🔥', cls:'ranged', dmgMul:1.4, rateMul:1.1,  rangeMul:1.0, elem:'fire', aoe:50, color:'#ff5c2a', sfx:'magic', desc:'火焰弹,命中爆炸溅射' },
+  froststaff:{name:'寒霜法杖', icon:'❄️', cls:'ranged', dmgMul:1.1, rateMul:0.9,  rangeMul:1.2, elem:'frost', slow:0.5, color:'#5cd4ff', sfx:'magic', desc:'寒霜弹,减速敌人' },
+  dagger:   { name:'淬毒双刃', icon:'🔪', cls:'melee',  dmgMul:1.0, rateMul:0.6,  rangeMul:0.9, elem:'poison', poison:6, color:'#8ee05c', sfx:'swing', desc:'剧毒双刃,持续掉血' },
+};
+
 // 升级池
 const UPGRADES = [
   { id:'dmg',    icon:'⚔️', name:'攻击伤害 +15%',   cat:'atk', apply:p=>p.dmgMul*=1.15 },
@@ -105,6 +117,8 @@ const G = {
   timeScale: 1, timeScaleT: 0,
   props: [], traps: [],
   reviveCoins: 0, reviveProgress: 0,
+  shopItems: [],
+  autoBattle: true, // 自动战斗开关
   meta: null,
 };
 
@@ -204,7 +218,7 @@ function hitStop(t){ G.hitStop=Math.max(G.hitStop,t); }
 // ---------- 玩家 ----------
 function makePlayer(heroKey, slot){ // slot 0=P1 1=P2
   const t = HERO_TYPES[heroKey];
-  return {
+  const p = {
     slot, heroKey, def:t,
     x: WORLD_W/2 + (slot? 60:-60), y: WORLD_H/2,
     vx:0, vy:0, r:20, face: slot? -1:1, aimAngle:0,
@@ -212,12 +226,23 @@ function makePlayer(heroKey, slot){ // slot 0=P1 1=P2
     dmgMul:1, rateMul:1, projMul:1, rangeMul:1, shots:1, dashMul:1,
     iframeBonus:0, regen:0, lifesteal:0, thorns:0, thunder:0,
     killExplode:false, minions:0,
-    critChance:0.1, reviveCoins:0, weapon:null, elem:null,
     atkCd:0, dashCd:0, dashing:0, dashDx:0, dashDy:0, invuln:0,
     skillCd:0, skillMax:6,
     animT:0, walkT:0, state:'idle',
     alive:true, color:t.color,
+    ai:false, auto:true, // ai=AI队友 / auto=自动战斗
   };
+  // 初始武器按职业
+  p.weapon = heroKey==='knight'?'sword':heroKey==='archer'?'bow':heroKey==='mage'?'firestaff':'dagger';
+  return p;
+}
+
+// 换武器: 应用新武器攻速(以职业基础攻速为基准)
+function setWeapon(p, wkey){
+  if(!WEAPONS[wkey]) return;
+  p.weapon=wkey;
+  p.rate = p.def.rate * (WEAPONS[wkey].rateMul||1);
+  spawnFloater(p.x,p.y-30, WEAPONS[wkey].icon+' '+WEAPONS[wkey].name, WEAPONS[wkey].color, 15);
 }
 
 function playerNearestEnemy(p){
@@ -228,37 +253,51 @@ function playerNearestEnemy(p){
 
 function playerAttack(p){
   const t=p.def;
-  const range = t.range * p.rangeMul;
+  const w=p.weapon? WEAPONS[p.weapon]:null;
+  const range = t.range * p.rangeMul * (w?w.rangeMul:1);
   const target = playerNearestEnemy(p);
   if (target) p.aimAngle = angleTo(p.x,p.y,target.x,target.y);
   p.face = Math.cos(p.aimAngle) >= 0 ? 1 : -1;
+  const baseDmg = p.atk*p.dmgMul*(w?w.dmgMul:1);
+  const atkColor = w?w.color:p.color;
+  const elem = w?w.elem:null;
 
   if (t.arc){ // 近战扇形
-    playSfx(t.sfx==='swing'?'swing':'sword', 0.7);
+    playSfx(w?w.sfx:(t.sfx==='swing'?'swing':'sword'), 0.7);
     let hitAny=false;
     for(const e of G.enemies){
       if(!e.alive) continue;
       const d=dist(p.x,p.y,e.x,e.y);
       if(d > range+e.r) continue;
       let da = Math.abs(((angleTo(p.x,p.y,e.x,e.y)-p.aimAngle)+Math.PI*3)%(Math.PI*2)-Math.PI);
-      if(da < 1.1){ damageEnemy(e, p.atk*p.dmgMul, p, {knockback:t.arc?160:90}); hitAny=true; }
+      if(da < 1.1){
+        damageEnemy(e, baseDmg, p, {knockback:(w&&w.knockback)||160, elem});
+        if(w&&w.poison){ e.poison={dps:w.poison,t:3}; }
+        hitAny=true;
+      }
+    }
+    // 南瓜锤冲击波
+    if(w&&w.aoeWave){
+      addShake(8,0.18); playSfx('explode',0.5);
+      G.particles.push({shock:true,x:p.x,y:p.y,r:10,maxR:range*1.6,life:0.3,maxLife:0.3,color:w.color});
+      for(const e of G.enemies){ if(!e.alive)continue; if(dist(p.x,p.y,e.x,e.y)<range*1.6+e.r) damageEnemy(e, baseDmg*0.4, p, {knockback:280,noCrit:true}); }
     }
     // 近战可打碎道具
     tryBreakProps(p.x+Math.cos(p.aimAngle)*range*0.6, p.y+Math.sin(p.aimAngle)*range*0.6, range*0.7);
     // 近战挥砍特效
-    G.particles.push({slash:true,x:p.x,y:p.y,ang:p.aimAngle,life:0.12,maxLife:0.12,color:p.color,range});
+    G.particles.push({slash:true,x:p.x,y:p.y,ang:p.aimAngle,life:0.12,maxLife:0.12,color:atkColor,range});
     if(hitAny){ hitStop(0.03); addShake(3,0.08); }
   } else { // 远程弹道
-    playSfx(t.sfx, 0.7);
-    const n=p.shots;
+    playSfx(w?w.sfx:t.sfx, 0.7);
+    const n=p.shots+(w&&w.shots? w.shots-1:0);
     for(let i=0;i<n;i++){
       const spread = n>1 ? (i-(n-1)/2)*0.18 : 0;
       const a=p.aimAngle+spread;
       const spd=t.projSpeed*p.projMul;
       G.projectiles.push({
         x:p.x,y:p.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,
-        dmg:p.atk*p.dmgMul, r:8, pierce:t.pierce, bounce:t.bounce||0, aoe:t.aoe||0,
-        color:p.color, owner:p, life: range/spd, kind:t.sfx,
+        dmg:baseDmg, r:8, pierce:t.pierce, bounce:t.bounce||0, aoe:(w&&w.aoe)||t.aoe||0,
+        slow:(w&&w.slow)||0, elem, color:atkColor, owner:p, life: range/spd, kind:w?w.sfx:t.sfx,
       });
     }
   }
@@ -361,6 +400,11 @@ function killEnemy(e, source){
   for(let i=0;i<Math.min(5,Math.ceil(gd/3));i++) G.pickups.push({x:e.x+rand(-16,16),y:e.y+rand(-16,16),vx:rand(-60,60),vy:rand(-60,60),kind:'coin',val:Math.ceil(gd/Math.min(5,Math.ceil(gd/3))),life:20,t:0});
   if(Math.random()<0.06) G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'heart',val:20,life:20,t:0});
   if(Math.random()<0.03) G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'revive',val:1,life:25,t:0});
+  // 武器掉落: BOSS必掉 / 精英小概率
+  if(e.isBoss || Math.random()<0.02){
+    const drops=['pumpkin','bonescythe','crossbow','firestaff','froststaff'];
+    G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'weapon',val:drops[irand(0,drops.length-1)],life:30,t:0});
+  }
   if(source && source.killExplode){ playSfx('explode',0.6);
     for(const o of G.enemies){ if(o.alive&&dist(e.x,e.y,o.x,o.y)<110) damageEnemy(o,20,source,{noCrit:true}); }
     for(let i=0;i<12;i++) spawnParticles(e.x,e.y,'#ff9540',1,220,0.4,4);
@@ -380,6 +424,13 @@ function nearestPlayer(e){
 function updateEnemy(e, dt){
   if(!e.alive) return;
   e.animT+=dt; if(e.hitT>0)e.hitT-=dt; if(e.touchCd>0)e.touchCd-=dt; if(e.aiT>0)e.aiT-=dt;
+  // 中毒 DoT
+  if(e.poison && e.poison.t>0){ e.poison.t-=dt; e.hp-=e.poison.dps*dt;
+    if(Math.random()<dt*8) spawnParticles(e.x,e.y-e.r,'#8ee05c',1,30,0.4,3);
+    if(e.hp<=0){ killEnemy(e,null); return; } }
+  // 减速
+  let spdMul=1;
+  if(e.slowT>0){ e.slowT-=dt; spdMul=e.slowMul||0.5; if(e.slowT<=0)e.slowMul=1; }
   const p=nearestPlayer(e);
   if(!p){ e.vx*=0.9; e.vy*=0.9; return; }
   const d=dist(e.x,e.y,p.x,p.y);
@@ -423,9 +474,9 @@ function updateEnemy(e, dt){
   // Boss 额外技能
   if(e.isBoss){ updateBoss(e, dt, p, d, a); }
 
-  // 位置积分 + 世界边界
-  e.x=clamp(e.x+e.vx*dt, 40, WORLD_W-40);
-  e.y=clamp(e.y+e.vy*dt, 40, WORLD_H-40);
+  // 位置积分 + 世界边界(应用减速)
+  e.x=clamp(e.x+e.vx*spdMul*dt, 40, WORLD_W-40);
+  e.y=clamp(e.y+e.vy*spdMul*dt, 40, WORLD_H-40);
 
   // 接触伤害
   if(e.touchCd<=0 && d < e.r+p.r-4 && p.invuln<=0){
@@ -602,10 +653,98 @@ function nextLevel(){
   spawnFloater(WORLD_W/2,WORLD_H/2,'进入 '+LEVEL_DEFS[G.level].name,'#fff',36);
 }
 
+// ========== 商店系统 (每关过关后) ==========
+const SHOP_SELLABLE=['pumpkin','bonescythe','crossbow','firestaff','froststaff'];
+function rollShop(){
+  const items=[];
+  // 2 把随机武器(不重复)
+  const ws=[...SHOP_SELLABLE];
+  for(let i=0;i<2 && ws.length;i++){
+    const k=ws.splice(irand(0,ws.length-1),1)[0];
+    items.push({ kind:'weapon', key:k, icon:WEAPONS[k].icon, name:WEAPONS[k].name, desc:WEAPONS[k].desc, price:55, color:WEAPONS[k].color });
+  }
+  items.push({ kind:'heal',  icon:'❤️', name:'治疗药水', desc:'全体恢复 50% 生命', price:30, color:'#ff5c8a' });
+  items.push({ kind:'revive',icon:'✚',  name:'复活币',   desc:'队友倒地时原地复活', price:40, color:'#5cd4ff' });
+  items.push({ kind:'maxhp', icon:'🛡️', name:'生命强化', desc:'全体 +25 最大生命', price:50, color:'#7ee081' });
+  G.shopItems=items;
+}
+function openShop(){
+  if(G.level>=LEVELS) return;      // 通关不再进商店
+  G.state='shop';
+  rollShop();
+  playSfx('magic',0.6);
+  showShopUI();
+}
+function buyShopItem(i){
+  const it=G.shopItems[i]; if(!it||it.sold) return;
+  if(G.gold<it.price){ playSfx('hit',0.3); spawnFloater(WORLD_W/2,WORLD_H/2-140,'金币不足!','#ff5c5c',22); return; }
+  G.gold-=it.price; it.sold=true; playSfx('bowhit',0.7);
+  for(const p of G.players){
+    if(!p.alive) continue;
+    if(it.kind==='weapon') setWeapon(p,it.key);
+    else if(it.kind==='heal') p.hp=Math.min(p.maxHp,p.hp+p.maxHp*0.5);
+    else if(it.kind==='revive') p.reviveCoins=(p.reviveCoins||0)+1;
+    else if(it.kind==='maxhp'){ p.maxHp+=25; p.hp+=25; }
+  }
+  showShopUI(); // 刷新已售状态
+}
+function closeShop(){
+  hideShopUI();
+  G.state='intermission'; G.interTimer=0.5;
+}
+
+// ========== 局外永久成长 (Meta / localStorage) ==========
+const META_KEY='dungeon_duo_meta_v1';
+const META_UPGRADES={
+  atk:   { name:'永久攻击', icon:'⚔️', desc:'每级 +5% 基础伤害', max:10, base:40, mul:1.5 },
+  hp:    { name:'永久生命', icon:'❤️', desc:'每级 +12 基础生命', max:10, base:40, mul:1.5 },
+  spd:   { name:'永久移速', icon:'💨', desc:'每级 +3% 移动速度', max:8,  base:45, mul:1.5 },
+  gold:  { name:'黄金猎手', icon:'💰', desc:'每级 +8% 金币获取', max:8,  base:45, mul:1.5 },
+  revive:{ name:'备用复活', icon:'✚',  desc:'每级开局 +1 复活币', max:3, base:90, mul:2 },
+};
+function metaCost(k){ const m=META_UPGRADES[k]; const lv=G.meta.upg[k]||0; return Math.round(m.base*Math.pow(m.mul,lv)); }
+function loadMeta(){
+  try{ G.meta=JSON.parse(localStorage.getItem(META_KEY))||null; }catch(e){ G.meta=null; }
+  if(!G.meta) G.meta={ souls:0, bestWave:0, runs:0, upg:{} };
+  if(!G.meta.upg) G.meta.upg={};
+  G.bestWave=G.meta.bestWave||0;
+}
+function saveMeta(){ try{ localStorage.setItem(META_KEY, JSON.stringify(G.meta)); }catch(e){} }
+function awardSouls(){
+  const gain=Math.round(G.wave*2 + G.kills*0.5 + G.bossesDown*15);
+  G.meta.souls+=gain; G.meta.runs++;
+  G.meta.bestWave=Math.max(G.meta.bestWave||0, G.wave);
+  G.bestWave=G.meta.bestWave;
+  saveMeta();
+  return gain;
+}
+function buyMeta(k){
+  const m=META_UPGRADES[k]; const lv=G.meta.upg[k]||0;
+  if(lv>=m.max) return;
+  const cost=metaCost(k);
+  if(G.meta.souls<cost){ playSfx('hit',0.3); return; }
+  G.meta.souls-=cost; G.meta.upg[k]=lv+1; saveMeta(); playSfx('bowhit',0.7);
+}
+function applyMetaToPlayer(p){
+  const u=G.meta?G.meta.upg:{};
+  if(u.atk) p.dmgMul*=1+u.atk*0.05;
+  if(u.hp){ p.maxHp+=u.hp*12; p.hp=p.maxHp; }
+  if(u.spd) p.spd*=1+u.spd*0.03;
+  if(u.gold) p.goldMul=1+u.gold*0.08;
+  if(u.revive) p.reviveCoins=(p.reviveCoins||0)+u.revive;
+}
+
 // ---------- 游戏流程 ----------
 function startGame(sel){ // sel: ['knight','archer']
+  loadMeta();
   G.players=[makePlayer(sel[0],0)];
   if(sel.length>1) G.players.push(makePlayer(sel[1],1));
+  else { // 单人: 配一个 AI 队友(默认弓手补位)
+    const aiKey = sel[0]==='archer'?'knight':'archer';
+    const ai=makePlayer(aiKey,1); ai.ai=true; ai.auto=true;
+    G.players.push(ai);
+  }
+  for(const p of G.players){ applyMetaToPlayer(p); if(!p.ai) p.auto=(G.autoBattle!==false); }
   G.enemies=[];G.projectiles=[];G.eprojectiles=[];G.pickups=[];G.particles=[];G.floaters=[];G.minions=[];
   G.wave=0;G.level=0;G.gold=0;G.kills=0;G.bossesDown=0;
   G.camX=WORLD_W/2-VIEW_W/2; G.camY=WORLD_H/2-VIEW_H/2;
@@ -615,12 +754,14 @@ function startGame(sel){ // sel: ['knight','archer']
 
 function doGameOver(){
   G.state='gameover';
-  G.bestWave=Math.max(G.bestWave,G.wave);
+  G.soulsGain=awardSouls();
   playBgm('defeat');
   showGameOverUI();
 }
 function doVictory(){
-  G.state='victory'; playBgm('victory'); showVictoryUI();
+  G.state='victory';
+  G.soulsGain=awardSouls();
+  playBgm('victory'); showVictoryUI();
 }
 
 // ---------- 主更新 ----------
@@ -642,7 +783,7 @@ function update(dt){
 
   if(G.state==='play'||G.state==='intermission'||G.state==='levelclear'){
     // 玩家
-    for(const p of G.players) if(p.alive) updatePlayer(p,dt);
+    for(const p of G.players){ if(!p.alive) continue; if(p.ai) updateAIPlayer(p,dt); else updatePlayer(p,dt); }
     updateMinions(dt);
     // 敌人
     for(const e of G.enemies) updateEnemy(e,dt);
@@ -670,7 +811,7 @@ function update(dt){
     // 玩家走进传送门 或 自动3秒
     let enter=G.levelTrans>3;
     for(const p of G.players) if(p.alive&&G.portal&&dist(p.x,p.y,G.portal.x,G.portal.y)<60) enter=true;
-    if(enter) nextLevel();
+    if(enter){ nextLevel(); openShop(); } // 过先进商店再下一关
   } else if(G.state==='upgrade'){
     G.upgradeTimer-=dt;
     updateUpgradeTimer(G.upgradeTimer);
@@ -704,13 +845,49 @@ function updatePlayer(p,dt){
   if(l>0){ p.walkT+=dt; p.face=mx>=0?1:-1; p.state='run'; } else p.state='idle';
   p.animT+=dt;
 
-  // 攻击朝向最近怪
+  // 攻击朝向最近怪 (辅助瞄准: 自动锁定最近目标)
   const tgt=playerNearestEnemy(p);
   if(tgt) p.aimAngle=angleTo(p.x,p.y,tgt.x,tgt.y);
 
-  if(keys[map.atk] && p.atkCd<=0){ p.atkCd=p.rate*p.rateMul; playerAttack(p); }
+  // 自动战斗开关: 有怪且处于攻击范围时自动出手
+  const wantAtk = keys[map.atk] || (p.auto && tgt);
+  if(wantAtk && p.atkCd<=0){ p.atkCd=p.rate*p.rateMul; playerAttack(p); }
   if(keys[map.dash]){ playerDash(p); keys[map.dash]=false; }
   if(keys[map.skill]){ playerSkill(p); keys[map.skill]=false; }
+}
+
+// ---------- AI 队友 (单人模式) ----------
+function updateAIPlayer(p,dt){
+  if(p.atkCd>0)p.atkCd-=dt; if(p.dashCd>0)p.dashCd-=dt;
+  if(p.invuln>0)p.invuln-=dt; if(p.skillCd>0)p.skillCd-=dt;
+  if(p.regen>0) p.hp=Math.min(p.maxHp,p.hp+p.regen*dt);
+
+  const tgt=playerNearestEnemy(p);
+  let mx=0,my=0;
+  if(tgt){
+    const d=dist(p.x,p.y,tgt.x,tgt.y);
+    p.aimAngle=angleTo(p.x,p.y,tgt.x,tgt.y);
+    const desired = p.def.arc? 50 : 280; // 近战贴近 / 远程保持距离
+    if(d>desired+20){ mx=Math.cos(p.aimAngle); my=Math.sin(p.aimAngle); }
+    else if(d<desired-20 && !p.def.arc){ mx=-Math.cos(p.aimAngle); my=-Math.sin(p.aimAngle); }
+    // 自动攻击
+    if(p.atkCd<=0 && d < p.range*1.1+40){ p.atkCd=p.rate*p.rateMul; playerAttack(p); }
+    // 危险时闪避
+    if(d<70 && p.dashCd<=0 && Math.random()<0.04){ playerDash(p); }
+    // 技能好了就用(怪多时)
+    if(p.skillCd<=0 && G.enemies.filter(e=>e.alive).length>=4){ playerSkill(p); }
+  } else {
+    // 没怪时跟随 P1
+    const leader=G.players.find(q=>q!==p&&q.alive);
+    if(leader){ const d=dist(p.x,p.y,leader.x,leader.y);
+      if(d>90){ const a=angleTo(p.x,p.y,leader.x,leader.y); mx=Math.cos(a); my=Math.sin(a); } }
+  }
+  const l=Math.hypot(mx,my); if(l>0){mx/=l;my/=l;}
+  p.vx=mx*p.spd; p.vy=my*p.spd;
+  p.x=clamp(p.x+p.vx*dt,30,WORLD_W-30);
+  p.y=clamp(p.y+p.vy*dt,30,WORLD_H-30);
+  if(l>0){ p.walkT+=dt; p.face=mx>=0?1:-1; p.state='run'; } else p.state='idle';
+  p.animT+=dt;
 }
 
 function updateProjectiles(dt){
@@ -721,8 +898,9 @@ function updateProjectiles(dt){
     for(const e of G.enemies){
       if(!e.alive||pr.dead)continue;
       if(dist(pr.x,pr.y,e.x,e.y)<pr.r+e.r){
-        damageEnemy(e,pr.dmg,pr.owner);
-        if(pr.aoe){ playSfx('explode',0.4); for(const o of G.enemies){if(o.alive&&o!==e&&dist(pr.x,pr.y,o.x,o.y)<pr.aoe)damageEnemy(o,pr.dmg*0.6,pr.owner);} spawnParticles(pr.x,pr.y,pr.color,8,140,0.3,3); pr.dead=true; }
+        damageEnemy(e,pr.dmg,pr.owner,{elem:pr.elem});
+        if(pr.slow){ e.slowT=1.5; e.slowMul=pr.slow; } // 寒霜减速
+        if(pr.aoe){ playSfx('explode',0.4); for(const o of G.enemies){if(o.alive&&o!==e&&dist(pr.x,pr.y,o.x,o.y)<pr.aoe)damageEnemy(o,pr.dmg*0.6,pr.owner,{elem:pr.elem,noCrit:true});} spawnParticles(pr.x,pr.y,pr.color,8,140,0.3,3); pr.dead=true; }
         else if(pr.bounce>0){ pr.bounce--; let nb=null,nd=1e9; for(const o of G.enemies){if(o.alive&&o!==e){const d=dist(pr.x,pr.y,o.x,o.y);if(d<nd){nd=d;nb=o;}}} if(nb){const a=angleTo(pr.x,pr.y,nb.x,nb.y);const s=Math.hypot(pr.vx,pr.vy);pr.vx=Math.cos(a)*s;pr.vy=Math.sin(a)*s;} else pr.dead=true; }
         else if(pr.pierce){ pr.pierceHits=(pr.pierceHits||0)+1; if(pr.pierceHits>3)pr.dead=true; }
         else pr.dead=true;
@@ -758,9 +936,10 @@ function updatePickups(dt){
       pk.x+=pk.vx*dt; pk.y+=pk.vy*dt;
       if(bd<best.r+10){
         pk.dead=true;
-        if(pk.kind==='coin'){ G.gold+=pk.val; playSfx('hit',0.2); spawnFloater(best.x,best.y-24,'+'+pk.val,'#ffd34d',13); }
+        if(pk.kind==='coin'){ const gv=Math.round(pk.val*(best.goldMul||1)); G.gold+=gv; playSfx('hit',0.2); spawnFloater(best.x,best.y-24,'+'+gv,'#ffd34d',13); }
         else if(pk.kind==='heart'){ best.hp=Math.min(best.maxHp,best.hp+pk.val); spawnFloater(best.x,best.y-24,'+'+pk.val+'❤','#7ee081',15); }
         else if(pk.kind==='revive'){ best.reviveCoins=(best.reviveCoins||0)+1; spawnFloater(best.x,best.y-24,'复活币!','#5cd4ff',16); }
+        else if(pk.kind==='weapon'){ setWeapon(best,pk.val); playSfx('magic',0.5); spawnParticles(best.x,best.y,WEAPONS[pk.val].color,10,120,0.4,4); }
         spawnParticles(best.x,best.y,'#ffd34d',5,80,0.3,3);
       }
     }
@@ -949,6 +1128,10 @@ function drawPickup(ctx,pk){
     if(img){ctx.drawImage(img,pk.x-10,pk.y-10+bob,20,20);} else {ctx.fillStyle='#ffd34d';ctx.beginPath();ctx.arc(pk.x,pk.y+bob,7,0,Math.PI*2);ctx.fill();}
   } else if(pk.kind==='heart'){ ctx.fillStyle='#ff5c8a';ctx.font='18px sans-serif';ctx.textAlign='center';ctx.fillText('❤',pk.x,pk.y+bob+6); }
   else if(pk.kind==='revive'){ ctx.fillStyle='#5cd4ff';ctx.font='18px sans-serif';ctx.textAlign='center';ctx.fillText('✚',pk.x,pk.y+bob+6); }
+  else if(pk.kind==='weapon'){ const w=WEAPONS[pk.val];
+    ctx.fillStyle=w.color;ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText(w.icon,pk.x,pk.y+bob+6);
+    if(pk.t<3){ ctx.fillStyle='#fff';ctx.font='bold 10px "Press Start 2P",monospace';ctx.fillText(w.name,pk.x,pk.y+bob+26); }
+  }
 }
 function drawPortal(ctx,po){
   const r=50+Math.sin(po.t*4)*8;
@@ -961,6 +1144,10 @@ function drawPortal(ctx,po){
 }
 function drawParticle(ctx,pt){
   const a=pt.life/pt.maxLife;
+  if(pt.shock){ // 冲击波扩散环
+    ctx.save();ctx.globalAlpha=a*0.8;ctx.strokeStyle=pt.color;ctx.lineWidth=6*a;
+    const r=lerp(pt.maxR,10,pt.life/pt.maxLife);
+    ctx.beginPath();ctx.arc(pt.x,pt.y,r,0,Math.PI*2);ctx.stroke();ctx.restore();return; }
   if(pt.slash){ ctx.save();ctx.globalAlpha=a;ctx.translate(pt.x,pt.y);ctx.rotate(pt.ang);
     ctx.strokeStyle=pt.color;ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,0,pt.range*0.7,-0.9,0.9);ctx.stroke();ctx.restore();return; }
   ctx.globalAlpha=a; ctx.fillStyle=pt.color;
@@ -1007,6 +1194,8 @@ function breakProp(pr){
   if(r<0.4) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'coin',val:irand(3,8),life:20,t:0});
   else if(r<0.55) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'heart',val:15,life:20,t:0});
   else if(r<0.62) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'revive',val:1,life:25,t:0});
+  else if(r<0.7){ const drops=['pumpkin','bonescythe','crossbow','firestaff','froststaff','dagger'];
+    G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'weapon',val:drops[irand(0,drops.length-1)],life:30,t:0}); }
 }
 // 玩家近战/弹道可打碎道具 — 在近战与弹道命中检测里调用
 function tryBreakProps(x,y,rad){

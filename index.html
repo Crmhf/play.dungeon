@@ -61,6 +61,21 @@
   .up-title{font-size:30px;color:var(--gold);text-shadow:0 0 16px var(--pu)}
   #up-timer{color:#ff8a5c;font-size:18px;margin-top:14px}
 
+  /* ---------- 商店 / 局外 ---------- */
+  #shop-cards,#meta-cards{display:flex;gap:16px;margin-top:26px;flex-wrap:wrap;justify-content:center;max-width:900px}
+  .shop-card{width:170px;padding:20px 12px;background:linear-gradient(180deg,#241a3a,#120a22);border:3px solid var(--pu);
+    border-radius:12px;cursor:pointer;transition:all .12s;position:relative}
+  .shop-card:hover{transform:translateY(-4px);border-color:var(--gold)}
+  .shop-card.sold{opacity:.35;cursor:default;transform:none}
+  .shop-card.cant{opacity:.6}
+  .shop-icon{font-size:38px;margin-bottom:10px}
+  .shop-name{font-size:12px;color:#fff;line-height:1.5;min-height:36px}
+  .shop-desc{font-size:8px;color:#b0a0d0;line-height:1.5;min-height:28px;margin-top:6px}
+  .shop-price{margin-top:10px;font-size:13px;color:var(--gold)}
+  .shop-price.no{color:#ff5c5c}
+  .shop-lv{position:absolute;top:8px;right:10px;font-size:9px;color:var(--pu2)}
+  .shop-gold{font-size:16px;color:var(--gold);margin-top:14px}
+
   /* ---------- 结束 ---------- */
   .big{font-size:52px;margin-bottom:20px;letter-spacing:4px}
   #gameover .big{color:#ff5c5c;text-shadow:0 0 24px #a00}
@@ -87,6 +102,7 @@
     <div class="title">地牢双雄</div>
     <div class="subtitle">双 人 合 作 · 肉 鸽 生 存</div>
     <button class="btn" id="to-select">进 入 地 牢</button>
+    <button class="btn ghost" id="to-meta">💠 灵魂熔炉</button>
     <div class="menu-hint">P1: WASD 移动 · C 攻击 · F 闪避 · B 技能<br>P2: 方向键 · L 攻击 · I 闪避 · J 技能<br>Esc 暂停 · M 静音</div>
   </div>
 
@@ -107,6 +123,23 @@
     <div class="up-title">⚡ 升级!三选一 ⚡</div>
     <div id="up-timer">15s</div>
     <div id="upgrade-cards"></div>
+  </div>
+
+  <!-- 商店 (过关后) -->
+  <div id="shop" class="overlay hidden">
+    <div class="up-title">🛒 地牢商店</div>
+    <div class="shop-gold">金币: <span id="shop-gold">0</span></div>
+    <div id="shop-cards"></div>
+    <button class="btn" id="shop-leave">继续前进 →</button>
+  </div>
+
+  <!-- 局外成长 (主菜单) -->
+  <div id="meta" class="overlay hidden">
+    <div class="up-title">💠 灵魂熔炉</div>
+    <div class="shop-gold">灵魂碎片: <span id="meta-souls">0</span></div>
+    <div class="subtitle">通关/失败都可获得碎片,永久强化下一局</div>
+    <div id="meta-cards"></div>
+    <button class="btn ghost" id="meta-back">返 回</button>
   </div>
 
   <!-- 暂停 -->

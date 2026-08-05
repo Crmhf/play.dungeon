@@ -13,6 +13,10 @@ function drawHUD(ctx){
     drawBar(ctx,x,y+18,180,12,p.hp/p.maxHp, p.alive?'#7ee081':'#444');
     ctx.fillStyle='#fff';ctx.font='10px "Press Start 2P",monospace';
     ctx.fillText(`${Math.ceil(p.hp)}/${Math.ceil(p.maxHp)}`,x+186,y+28);
+    // 当前武器
+    if(p.weapon && WEAPONS[p.weapon]){ const w=WEAPONS[p.weapon];
+      ctx.textAlign='left'; ctx.font='13px sans-serif'; ctx.fillStyle=w.color;
+      ctx.fillText(w.icon+' '+w.name, x, y+48); ctx.textAlign='left'; }
   });
 
   // 波次 / 关卡
@@ -63,8 +67,8 @@ function drawHUD(ctx){
 
   // 操作提示(底部) — 触屏设备改显示简化提示
   ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='10px "Press Start 2P",monospace';
-  if(G.isTouch){ ctx.fillText('左摇杆移动 · ⚔️攻击 · 💨闪避 · ✨技能', VIEW_W/2, VIEW_H-12); }
-  else { ctx.fillText('P1: WASD移动 C攻击 F闪避 B技能      P2: 方向键 L攻击 I闪避 J技能      Esc暂停 M静音', VIEW_W/2, VIEW_H-12); }
+  if(G.isTouch){ ctx.fillText('左摇杆移动 · 自动攻击 · 💨闪避 · ✨技能', VIEW_W/2, VIEW_H-12); }
+  else { ctx.fillText('P1: WASD移动 C攻击(按住) F闪避 B技能   P2: 方向键 L攻击 I闪避 J技能   T自动战斗 Esc暂停 M静音', VIEW_W/2, VIEW_H-12); }
 }
 
 // ---------- DOM UI ----------
@@ -88,14 +92,61 @@ function showGameOverUI(){
     `<div>扛到波次 <b>${G.wave}</b> / ${TOTAL_WAVES}</div>
      <div>击杀怪物 <b>${G.kills}</b></div>
      <div>击破 BOSS <b>${G.bossesDown}</b></div>
+     <div style="color:#b06ce0">+${G.soulsGain||0} 💠 灵魂碎片</div>
      <div>历史最佳 <b>${G.bestWave}</b> 波</div>`;
   $('gameover').classList.remove('hidden');
 }
 function showVictoryUI(){
   $('win-stats').innerHTML=
     `<div>通关全部 <b>${TOTAL_WAVES}</b> 波!</div>
-     <div>总击杀 <b>${G.kills}</b> · 击破 BOSS <b>${G.bossesDown}</b></div>`;
+     <div>总击杀 <b>${G.kills}</b> · 击破 BOSS <b>${G.bossesDown}</b></div>
+     <div style="color:#b06ce0">+${G.soulsGain||0} 💠 灵魂碎片</div>`;
   $('victory').classList.remove('hidden');
+}
+
+// ---------- 商店 UI ----------
+function showShopUI(){
+  $('shop').classList.remove('hidden');
+  $('shop-gold').textContent=G.gold;
+  const box=$('shop-cards'); box.innerHTML='';
+  G.shopItems.forEach((it,i)=>{
+    const d=document.createElement('div');
+    const afford=G.gold>=it.price;
+    d.className='shop-card'+(it.sold?' sold':'')+((!afford&&!it.sold)?' cant':'');
+    d.innerHTML=`<div class="shop-icon">${it.icon}</div>
+      <div class="shop-name">${it.name}</div>
+      <div class="shop-desc">${it.desc}</div>
+      <div class="shop-price ${afford?'':'no'}">${it.sold?'已售出':'💰'+it.price}</div>`;
+    if(!it.sold) d.onclick=()=>buyShopItem(i);
+    box.appendChild(d);
+  });
+}
+function hideShopUI(){ $('shop').classList.add('hidden'); }
+
+// ---------- 局外成长 UI ----------
+function showMetaUI(){
+  loadMeta();
+  $('meta').classList.remove('hidden');
+  $('menu').classList.add('hidden');
+  renderMetaCards();
+}
+function renderMetaCards(){
+  $('meta-souls').textContent=G.meta.souls;
+  const box=$('meta-cards'); box.innerHTML='';
+  for(const k in META_UPGRADES){
+    const m=META_UPGRADES[k]; const lv=G.meta.upg[k]||0;
+    const maxed=lv>=m.max; const cost=metaCost(k);
+    const afford=G.meta.souls>=cost;
+    const d=document.createElement('div');
+    d.className='shop-card'+((!afford&&!maxed)?' cant':'');
+    d.innerHTML=`<div class="shop-lv">${lv}/${m.max}</div>
+      <div class="shop-icon">${m.icon}</div>
+      <div class="shop-name">${m.name}</div>
+      <div class="shop-desc">${m.desc}</div>
+      <div class="shop-price ${afford?'':'no'}">${maxed?'已满级':'💠'+cost}</div>`;
+    if(!maxed) d.onclick=()=>{ buyMeta(k); renderMetaCards(); };
+    box.appendChild(d);
+  }
 }
 
 // ---------- 角色选择 ----------
@@ -144,7 +195,10 @@ window.addEventListener('keydown',e=>{
     if(e.code==='Digit2')applyUpgrade(1);
     if(e.code==='Digit3')applyUpgrade(2);
   }
-  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+    if(G.state==='shop' && e.code==='Escape'){ closeShop(); $('pause').classList.add('hidden'); }
+    if(e.code==='KeyT'){ G.autoBattle=!G.autoBattle; for(const p of G.players) if(!p.ai)p.auto=G.autoBattle;
+      spawnFloater(WORLD_W/2,WORLD_H/2-100, G.autoBattle?'自动战斗: 开':'自动战斗: 关', G.autoBattle?'#7ee081':'#ff8a5c', 20); }
 });
 window.addEventListener('keyup',e=>{keys[e.code]=false;});
 
@@ -173,6 +227,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   $('mode1').onclick=()=>{ selection=selection.slice(0,1); $('mode1').classList.add('on');$('mode2').classList.remove('on'); };
   $('mode2').onclick=()=>{ $('mode2').classList.add('on');$('mode1').classList.remove('on'); };
   $('to-select').onclick=()=>{ $('menu').classList.add('hidden'); $('select').classList.remove('hidden'); };
+  $('to-meta').onclick=showMetaUI;
+  $('meta-back').onclick=()=>{ $('meta').classList.add('hidden'); $('menu').classList.remove('hidden'); };
+  $('shop-leave').onclick=closeShop;
   // 结束重开
   const restart=()=>{ $('gameover').classList.add('hidden');$('victory').classList.add('hidden');
     selection=[];document.querySelectorAll('.hero-card').forEach(c=>c.classList.remove('sel'));
