@@ -115,6 +115,7 @@ const G = {
   // 新增: 连击 / 慢镜头 / 道具 / 陷阱 / 复活 / 局外
   combo: 0, comboT: 0, comboBest: 0, comboMul: 1,
   timeScale: 1, timeScaleT: 0,
+  flash: 0, flashColor: '#fff', // 全屏闪光
   props: [], traps: [],
   reviveCoins: 0, reviveProgress: 0,
   shopItems: [],
@@ -210,10 +211,12 @@ function spawnParticles(x,y,color,n=8,spd=120,life=0.5,size=3){
     G.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rand(life*0.5,life),maxLife:life,color,size:rand(size*0.5,size)}); }
 }
 function spawnFloater(x,y,text,color='#fff',size=16){
-  G.floaters.push({x,y,text,color,size,life:0.9,vy:-50});
+  if(G.floaters.length>40) G.floaters.shift(); // 防刷屏: 只留最近40个
+  G.floaters.push({x,y,text,color,size,life:0.9,vy:-50,vx:rand(-12,12)});
 }
 function addShake(amt, t=0.12){ G.shake=Math.max(G.shake,amt); G.shakeT=Math.max(G.shakeT,t); }
 function hitStop(t){ G.hitStop=Math.max(G.hitStop,t); }
+function screenFlash(color, amt=0.5){ G.flash=Math.max(G.flash,amt); G.flashColor=color; }
 
 // ---------- 玩家 ----------
 function makePlayer(heroKey, slot){ // slot 0=P1 1=P2
@@ -299,6 +302,8 @@ function playerAttack(p){
         dmg:baseDmg, r:8, pierce:t.pierce, bounce:t.bounce||0, aoe:(w&&w.aoe)||t.aoe||0,
         slow:(w&&w.slow)||0, elem, color:atkColor, owner:p, life: range/spd, kind:w?w.sfx:t.sfx,
       });
+      // 枪口闪光(短促亮粒)
+      G.particles.push({x:p.x+Math.cos(a)*p.r, y:p.y+Math.sin(a)*p.r, vx:Math.cos(a)*40, vy:Math.sin(a)*40, life:0.08, maxLife:0.08, color:'#fff', size:7});
     }
   }
 }
@@ -316,7 +321,7 @@ function playerSkill(p){
     for(let i=0;i<16;i++){ const a=rand(0,Math.PI*2), spd=500*p.projMul;
       G.projectiles.push({x:p.x,y:p.y-200,vx:Math.cos(a)*spd*0.3,vy:spd,dmg:p.atk*p.dmgMul,r:8,pierce:true,bounce:0,aoe:0,color:p.color,owner:p,life:0.9,kind:'bow'}); }
   } else if(p.heroKey==='mage'){ // 奥术爆发
-    playSfx('explode',0.9); addShake(9,0.25); hitStop(0.05);
+    playSfx('explode',0.9); addShake(9,0.25); hitStop(0.05); screenFlash('#c06ce0',0.35);
     for(const e of G.enemies){ if(!e.alive)continue; if(dist(p.x,p.y,e.x,e.y)<260+e.r) damageEnemy(e,p.atk*p.dmgMul*2.5,p); }
     for(let i=0;i<30;i++) spawnParticles(p.x,p.y,'#c06ce0',1,300,0.6,5);
   } else if(p.heroKey==='rogue'){ // 暗影突袭(隐身+加速)
@@ -341,8 +346,10 @@ function playerDash(p){
 // ---------- 敌人 ----------
 function makeEnemy(type, x, y, hpMul=1){
   const t=ENEMY_TYPES[type];
-  return { type, def:t, x, y, vx:0, vy:0, r: t.fw? (t.fw*t.scale*0.32) : 18,
+  const r = t.fw? (t.fw*t.scale*0.32) : 18;
+  return { type, def:t, x, y, vx:0, vy:0, r,
     hp: t.hp*hpMul, maxHp: t.hp*hpMul, spd:t.spd, dmg:t.dmg,
+    mass: Math.max(0.5, r/22), // 质量: 越大越难击退
     face:1, animT:rand(0,1), hitT:0, alive:true,
     aiT:0, aiState:'idle', chargeDx:0, chargeDy:0, stealth:0, shootCd:rand(1,2),
     touchCd:0, gold:t.gold, isBoss:false };
@@ -353,6 +360,7 @@ function makeBoss(levelIdx){
   const base = ['angrypig','skull','trunk','vampire','vampire'][levelIdx] || 'angrypig';
   const e = makeEnemy(base, WORLD_W/2, 200, 8 + levelIdx*4);
   e.isBoss=true; e.r*=2.4; e.dmg*=1.5; e.spd*=0.9; e.gold=50+levelIdx*20;
+  e.mass=10; // Boss 重, 免疫击退在 damageEnemy 判断
   e.bossPhase=0; e.scaleMul=2.4;
   if(levelIdx===4){ e.pumpkinKing=true; } // 南瓜王
   return e;
@@ -368,9 +376,13 @@ function damageEnemy(e, dmg, source, opts){
   // 连击倍率
   if(source) dmg*=G.comboMul;
   e.hp-=dmg; e.hitT=0.12;
-  // 击退
-  if(source && !e.isBoss){ const a=angleTo(source.x,source.y,e.x,e.y); const kb=opts.knockback||90;
-    e.vx+=Math.cos(a)*kb; e.vy+=Math.sin(a)*kb; }
+  // 击退(物理): 冲量按质量折算, Boss免疫, 由 updateEnemy 的摩擦衰减
+  if(source && !e.isBoss){
+    const a=angleTo(source.x,source.y,e.x,e.y);
+    const kb=opts.knockback||90;
+    const mass = e.mass||1;
+    e.vx+=Math.cos(a)*kb/mass; e.vy+=Math.sin(a)*kb/mass;
+  }
   // 伤害数字分层
   const col = opts.color || (crit?'#ff4d4d':(opts.elem==='fire'?'#ff9540':opts.elem==='thunder'?'#ffe95c':opts.elem==='poison'?'#8ee05c':'#ffd34d'));
   spawnFloater(e.x+rand(-6,6), e.y-e.r-6, Math.round(dmg)+(crit?'!':''), col, crit?(e.isBoss?30:22):(e.isBoss?22:15));
@@ -382,7 +394,7 @@ function damageEnemy(e, dmg, source, opts){
     for(const o of G.enemies){ if(o.alive&&dist(e.x,e.y,o.x,o.y)<120){ o.hp-=dmg*0.6; o.hitT=0.1; spawnFloater(o.x,o.y-o.r-6,Math.round(dmg*0.6),'#ffe95c',13); } }
     for(let i=0;i<10;i++) spawnParticles(e.x,e.y,'#ffe95c',1,200,0.3,3);
   }
-  if(crit){ addShake(4,0.08); playSfx('hit',0.6); }
+  if(crit){ addShake(4,0.08); playSfx('hit',0.6); e.critT=0.18; } // 暴击缩放反馈
   if(e.hp<=0){ killEnemy(e, source); }
 }
 
@@ -409,7 +421,7 @@ function killEnemy(e, source){
     for(const o of G.enemies){ if(o.alive&&dist(e.x,e.y,o.x,o.y)<110) damageEnemy(o,20,source,{noCrit:true}); }
     for(let i=0;i<12;i++) spawnParticles(e.x,e.y,'#ff9540',1,220,0.4,4);
   }
-  if(e.isBoss){ G.bossesDown++; addShake(16,0.5); hitStop(0.2); playSfx('explode',1);
+  if(e.isBoss){ G.bossesDown++; addShake(16,0.5); hitStop(0.2); playSfx('explode',1); screenFlash('#ffd34d',0.5);
     G.timeScale=0.25; G.timeScaleT=0.9; // Boss 死亡慢镜头
     spawnFloater(e.x,e.y-40,'BOSS 击破!','#ffd34d',36); }
 }
@@ -481,9 +493,43 @@ function updateEnemy(e, dt){
   if(Math.abs(e.vx)>6) e.face = e.vx>=0?1:-1;
   else e.face = p.x>=e.x?1:-1;
 
+  // 摩擦: 击退冲量随时间衰减(恢复自主移动)
+  const fr=Math.exp(-dt*4.5);
+  e.vx*=fr; e.vy*=fr;
+
+  // 软性推挤: 与玩家重叠时把玩家挤开一点(避免完全穿模)
+  if(d < e.r+p.r-2){
+    const ov=(e.r+p.r-2-d)||1, nx=(p.x-e.x)/(d||1), ny=(p.y-e.y)/(d||1);
+    const push=ov*0.5;
+    p.x=clamp(p.x+nx*push,30,WORLD_W-30); p.y=clamp(p.y+ny*push,30,WORLD_H-30);
+  }
+
   // 接触伤害
   if(e.touchCd<=0 && d < e.r+p.r-4 && p.invuln<=0){
     hurtPlayer(p, e.dmg, e); e.touchCd=0.8;
+  }
+}
+
+// 敌人群体分离 (flocking): 每帧一次, 让怪彼此错开不叠成一团
+function separateEnemies(){
+  const arr=G.enemies;
+  for(let i=0;i<arr.length;i++){
+    const a=arr[i]; if(!a.alive) continue;
+    for(let j=i+1;j<arr.length;j++){
+      const b=arr[j]; if(!b.alive) continue;
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const rr=(a.r+b.r)*0.9;
+      const d2=dx*dx+dy*dy;
+      if(d2>rr*rr) continue;
+      let d=Math.sqrt(d2), nx, ny;
+      if(d<0.01){ nx=rand(-1,1); ny=rand(-1,1); const nl=Math.hypot(nx,ny)||1; nx/=nl; ny/=nl; d=0.01; } // 完全重叠给随机方向
+      else { nx=dx/d; ny=dy/d; }
+      const ov=(rr-d)*0.5;
+      const ma=a.mass||1, mb=b.mass||1, tot=ma+mb;
+      // 按质量分配位移(轻的推得多)
+      a.x-=nx*ov*(mb/tot); a.y-=ny*ov*(mb/tot);
+      b.x+=nx*ov*(ma/tot); b.y+=ny*ov*(ma/tot);
+    }
   }
 }
 
@@ -519,10 +565,14 @@ function hurtPlayer(p, dmg, from){
   if(p.invuln>0||!p.alive) return;
   p.hp-=dmg; p.invuln=0.6+p.iframeBonus;
   playSfx('hurt',0.7); addShake(6,0.15); hitStop(0.04);
+  p.hurtT=0.2; // 受击缩放
+  // 受击击退(物理): 被怪撞会产生位移
+  if(from){ const a=angleTo(from.x,from.y,p.x,p.y); const kb=Math.min(180, from.dmg*9);
+    p.x=clamp(p.x+Math.cos(a)*kb*0.06,30,WORLD_W-30); p.y=clamp(p.y+Math.sin(a)*kb*0.06,30,WORLD_H-30); }
   spawnFloater(p.x,p.y-30,'-'+Math.round(dmg),'#ff5c5c',18);
   spawnParticles(p.x,p.y,'#ff5c5c',8,140,0.4,3);
   if(p.thorns>0 && from){ damageEnemy(from, dmg*p.thorns, null); }
-  if(p.hp<=0){ p.hp=0; p.alive=false; playSfx('heavy',0.8); spawnParticles(p.x,p.y,'#888',20,160,0.8,4);
+  if(p.hp<=0){ p.hp=0; p.alive=false; playSfx('heavy',0.8); screenFlash('#ff2a2a',0.4); spawnParticles(p.x,p.y,'#888',20,160,0.8,4);
     checkGameOver(); }
 }
 
@@ -783,6 +833,7 @@ function update(dt){
   // 打击停顿 & 屏幕震动衰减
   if(G.hitStop>0){ G.hitStop-=dt; return; }
   if(G.shakeT>0){ G.shakeT-=dt; if(G.shakeT<=0)G.shake=0; }
+  if(G.flash>0){ G.flash-=dt*2.2; if(G.flash<0)G.flash=0; }
 
   if(G.state==='play'||G.state==='intermission'||G.state==='levelclear'){
     // 玩家
@@ -790,6 +841,7 @@ function update(dt){
     updateMinions(dt);
     // 敌人
     for(const e of G.enemies) updateEnemy(e,dt);
+    separateEnemies(); // 群体分离
     G.enemies=G.enemies.filter(e=>e.alive||e.hitT>0);
     // 弹道
     updateProjectiles(dt);
@@ -835,6 +887,7 @@ function updatePlayer(p,dt){
 
   if(p.atkCd>0)p.atkCd-=dt; if(p.dashCd>0)p.dashCd-=dt;
   if(p.invuln>0)p.invuln-=dt; if(p.skillCd>0)p.skillCd-=dt;
+  if(p.hurtT>0)p.hurtT-=dt; // 受击缩放计时
   if(p.regen>0) p.hp=Math.min(p.maxHp,p.hp+p.regen*dt);
 
   if(p.dashing>0){
@@ -898,8 +951,7 @@ function updateAIPlayer(p,dt){
   const l=Math.hypot(mx,my); if(l>0){mx/=l;my/=l;}
   p.vx=mx*p.spd; p.vy=my*p.spd;
   p.x=clamp(p.x+p.vx*dt,30,WORLD_W-30);
-  p.y=clamp(p.y+p.vy*dt,30,WORLD_H-30);
-  if(l>0){
+  p.y=clamp(p.y+p.vy*dt,30,WORLD_H-30);  if(l>0){
     p.walkT+=dt; p.state='run';
     // 朝向: 面向移动方向(不倒着走); 交战贴脸时除外
     if(tgt && dist(p.x,p.y,tgt.x,tgt.y) < (p.def.arc?90:70)) p.face = Math.cos(p.aimAngle)>=0?1:-1;
@@ -952,8 +1004,11 @@ function updatePickups(dt){
     let best=null,bd=1e9;
     for(const p of G.players){if(!p.alive)continue;const d=dist(pk.x,pk.y,p.x,p.y);if(d<bd){bd=d;best=p;}}
     if(best){
-      if(bd<130){ const a=angleTo(pk.x,pk.y,best.x,best.y); pk.vx=Math.cos(a)*400; pk.vy=Math.sin(a)*400; }
-      else { pk.vx*=0.9; pk.vy*=0.9; }
+      if(bd<130){ // 磁吸: 越近吸越快(缓入)
+        const a=angleTo(pk.x,pk.y,best.x,best.y);
+        const pull = 400 + (130-bd)*6;
+        pk.vx=Math.cos(a)*pull; pk.vy=Math.sin(a)*pull;
+      } else { pk.vx*=0.88; pk.vy*=0.88; } // 初始弹出后减速(惯性)
       pk.x+=pk.vx*dt; pk.y+=pk.vy*dt;
       if(bd<best.r+10){
         pk.dead=true;
@@ -982,7 +1037,7 @@ function updateCamera(dt){
 function updateParticles(dt){
   for(const pt of G.particles){ pt.life-=dt; if(!pt.slash){pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vx*=0.96;pt.vy*=0.96;} }
   G.particles=G.particles.filter(p=>p.life>0);
-  for(const f of G.floaters){ f.life-=dt; f.y+=f.vy*dt; f.vy*=0.95; }
+  for(const f of G.floaters){ f.life-=dt; f.x+=(f.vx||0)*dt; f.y+=f.vy*dt; f.vy*=0.95; f.vx*=0.9; }
   G.floaters=G.floaters.filter(f=>f.life>0);
 }
 
@@ -1024,6 +1079,8 @@ function render(){
 
   // 暗角滤镜
   drawVignette(ctx);
+  // 全屏闪光(叠在暗角之上, 淡出)
+  if(G.flash>0){ ctx.globalAlpha=Math.min(1,G.flash); ctx.fillStyle=G.flashColor; ctx.fillRect(0,0,VIEW_W,VIEW_H); ctx.globalAlpha=1; }
   // HUD
   drawHUD(ctx);
 }
@@ -1055,7 +1112,9 @@ function drawPlayer(ctx,p){
   ctx.save();
   if(blink) ctx.globalAlpha=0.4;
   ctx.translate(p.x,p.y);
-  ctx.scale(p.face,1);
+  // 受击压扁回弹
+  let psq=1; if(p.hurtT>0){ psq=1+Math.sin(p.hurtT/0.2*Math.PI)*0.2; }
+  ctx.scale(p.face*psq,1/psq);
 
   const t=p.def;
   if(t.sheet==='chars'){
@@ -1091,7 +1150,11 @@ function drawEnemy(ctx,e){
   drawShadow(ctx,e.x,e.y,e.r);
   const flash=e.hitT>0;
   ctx.translate(e.x,e.y);
-  ctx.scale(e.face*(e.scaleMul?1:1),1);
+  // 受击压扁回弹(暴击更明显)
+  let sq=1;
+  if(e.critT>0){ e.critT-=0.016; sq=1+Math.sin(e.critT/0.18*Math.PI)*0.25; }
+  else if(e.hitT>0){ sq=1+Math.sin(e.hitT/0.12*Math.PI)*0.12; }
+  ctx.scale(e.face*(e.scaleMul?1:1)*sq, 1/sq);
   const sm = e.scaleMul||1;
   ctx.imageSmoothingEnabled=false;
 
@@ -1112,6 +1175,12 @@ function drawEnemy(ctx,e){
     ctx.beginPath();ctx.arc(0,-e.r*0.5,e.r,0,Math.PI*2);ctx.fill(); ctx.globalCompositeOperation='source-over'; }
   ctx.restore();
 
+  // 濒死红闪(<25%血, 越死闪越快)
+  if(e.alive && e.hp<e.maxHp*0.25 && (G.time*8|0)%2===0){
+    ctx.globalAlpha=0.3; ctx.fillStyle='#ff3b3b';
+    ctx.beginPath();ctx.arc(e.x,e.y-e.r*0.4,e.r*0.9,0,Math.PI*2);ctx.fill(); ctx.globalAlpha=1;
+  }
+
   // 血条(Boss 大血条)
   if(e.isBoss){ drawBar(ctx,e.x-e.r,e.y-e.r-16,e.r*2,7,e.hp/e.maxHp,'#ff5c5c'); }
   else if(e.hp<e.maxHp){ drawBar(ctx,e.x-e.r,e.y-e.r-8,e.r*2,3,e.hp/e.maxHp,'#ff8a5c'); }
@@ -1129,12 +1198,17 @@ function drawMinion(ctx,m){
 }
 
 function drawProjectile(ctx,pr){
-  ctx.save(); ctx.fillStyle=pr.color;
-  ctx.shadowColor=pr.color; ctx.shadowBlur=8;
+  ctx.save();
   const a=Math.atan2(pr.vy,pr.vx);
+  // 拖尾(速度方向的渐隐残影)
+  ctx.strokeStyle=pr.color; ctx.globalAlpha=0.35; ctx.lineWidth=pr.r*0.9; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(pr.x-Math.cos(a)*pr.r*2.4, pr.y-Math.sin(a)*pr.r*2.4); ctx.lineTo(pr.x,pr.y); ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.fillStyle=pr.color; ctx.shadowColor=pr.color; ctx.shadowBlur=10;
   ctx.translate(pr.x,pr.y); ctx.rotate(a);
   if(pr.kind==='bow'){ ctx.fillRect(-10,-2,20,4); ctx.beginPath();ctx.moveTo(10,0);ctx.lineTo(4,-4);ctx.lineTo(4,4);ctx.fill(); }
-  else { ctx.beginPath();ctx.arc(0,0,pr.r,0,Math.PI*2);ctx.fill(); }
+  else { ctx.beginPath();ctx.arc(0,0,pr.r,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0; ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath();ctx.arc(0,0,pr.r*0.45,0,Math.PI*2);ctx.fill(); }
   ctx.restore();
 }
 function drawEProjectile(ctx,pr){
