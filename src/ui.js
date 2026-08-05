@@ -9,30 +9,64 @@ function drawHUD(ctx){
   ctx.fillStyle='rgba(10,6,18,0.72)'; ctx.fillRect(0,0,VIEW_W,64);
   ctx.strokeStyle='rgba(150,110,220,0.4)';ctx.lineWidth=2;ctx.strokeRect(-2,-2,VIEW_W+4,66);
 
-  // P1 / P2 血条
+  // P1 / P2 血条面板: P1左上角, P2右上角
   G.players.forEach((p,i)=>{
-    const x=20+i*280, y=14;
-    ctx.fillStyle=p.alive?p.color:'#555'; ctx.font='bold 13px "Press Start 2P",monospace'; ctx.textAlign='left';
+    const leftSide = i===0;
+    const x = leftSide? 20 : VIEW_W-20-260, y=14;
+    ctx.textAlign='left';
+    ctx.fillStyle=p.alive?p.color:'#555'; ctx.font='bold 13px "Press Start 2P",monospace';
     ctx.fillText(`P${i+1} ${p.def.name}`, x, y+10);
     // 每人独立金币(名字右侧)
     if(G.imgs.coin) ctx.drawImage(G.imgs.coin, x+118, y-1, 15,15);
     ctx.fillStyle='#ffd34d'; ctx.font='bold 11px "Press Start 2P",monospace';
     ctx.fillText(`${p.gold||0}`, x+136, y+11);
-    drawBar(ctx,x,y+18,180,12,p.hp/p.maxHp, p.alive?'#7ee081':'#444');
-    ctx.fillStyle='#fff';ctx.font='10px "Press Start 2P",monospace';
-    ctx.fillText(`${Math.ceil(p.hp)}/${Math.ceil(p.maxHp)}`,x+186,y+28);
+    drawBar(ctx,x,y+18,150,12,p.hp/p.maxHp, p.alive?'#7ee081':'#444');
+    ctx.fillStyle='#fff';ctx.font='9px "Press Start 2P",monospace';
+    ctx.fillText(`${Math.ceil(p.hp)}/${Math.ceil(p.maxHp)}`,x+156,y+27);
     // 当前武器 + 装备图标
     if(p.weapon && WEAPONS[p.weapon]){ const w=WEAPONS[p.weapon];
-      ctx.textAlign='left'; ctx.font='13px sans-serif'; ctx.fillStyle=w.color;
-      ctx.fillText(w.icon+' '+w.name, x, y+48); ctx.textAlign='left'; }
+      ctx.font='13px sans-serif'; ctx.fillStyle=w.color;
+      ctx.fillText(w.icon+' '+w.name, x, y+48); }
     if(p.gear && GEARS[p.gear]){ const g=GEARS[p.gear];
-      ctx.textAlign='left'; ctx.font='12px sans-serif'; ctx.fillStyle=g.color;
+      ctx.font='12px sans-serif'; ctx.fillStyle=g.color;
       ctx.fillText(g.icon, x+108, y+48); }
-    // 专属技能名 + 冷却倒计时(秒)
-    if(p.def.skill){ const sk=p.def.skill; const cd=p.skillCd>0;
-      ctx.textAlign='left'; ctx.font='11px "Press Start 2P",monospace';
-      ctx.fillStyle=cd?'#8a7ab0':sk.color;
-      ctx.fillText('✦'+sk.name+(cd?' '+p.skillCd.toFixed(1)+'s':' 就绪'), x+120, y+48); }
+
+    // ===== 专属技能冷却框(面板右端 36x36) =====
+    if(p.def.skill){
+      const sk=p.def.skill;
+      const cdBase=p.skillCdMax||p.skillMax;
+      const frac=p.skillCd>0? clamp(p.skillCd/cdBase,0,1):0;
+      const cx=x+222, cy=y+2, cs=36; // 框左上+边长
+      // 底框
+      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(cx-2,cy-2,cs+4,cs+4);
+      ctx.strokeStyle=frac>0?'#4a3a6a':sk.color; ctx.lineWidth=2;
+      ctx.strokeRect(cx-2,cy-2,cs+4,cs+4);
+      if(frac>0){
+        // 冷却中: 暗底 + 按剩余比例从顶部往下亮起(回充动画)
+        ctx.fillStyle='rgba(60,45,90,0.6)'; ctx.fillRect(cx,cy,cs,cs);
+        ctx.save(); ctx.beginPath(); ctx.rect(cx, cy+cs*frac, cs, cs*(1-frac)); ctx.clip();
+        ctx.fillStyle=sk.color; ctx.globalAlpha=0.35; ctx.fillRect(cx,cy,cs,cs); ctx.restore();
+        // 剩余秒数
+        ctx.fillStyle='#fff'; ctx.font='bold 14px "Press Start 2P",monospace'; ctx.textAlign='center';
+        ctx.strokeStyle='rgba(0,0,0,0.9)'; ctx.lineWidth=3;
+        const cdTxt=p.skillCd.toFixed(1);
+        ctx.strokeText(cdTxt,cx+cs/2,cy+cs/2+5); ctx.fillText(cdTxt,cx+cs/2,cy+cs/2+5);
+        ctx.textAlign='left';
+      } else {
+        // 就绪: 高亮✦ + 脉冲边框
+        const pulse=0.7+Math.sin(G.time*6)*0.3;
+        ctx.save(); ctx.globalAlpha=pulse;
+        ctx.strokeStyle=sk.color; ctx.lineWidth=3;
+        ctx.strokeRect(cx-3,cy-3,cs+6,cs+6);
+        ctx.fillStyle=sk.color; ctx.font='bold 20px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('✦',cx+cs/2,cy+cs/2+7); ctx.restore();
+        ctx.textAlign='left';
+      }
+      // 技能名(框下方)
+      ctx.fillStyle=frac>0?'#8a7ab0':sk.color; ctx.font='9px "Press Start 2P",monospace'; ctx.textAlign='center';
+      ctx.fillText(sk.name, cx+cs/2, cy+cs+12);
+      ctx.textAlign='left';
+    }
   });
 
   // 波次 / 关卡
@@ -55,11 +89,11 @@ function drawHUD(ctx){
     ctx.strokeStyle='#ffd34d'; ctx.lineWidth=2; ctx.strokeRect(bx-3,by-3,bw+6,18);
   }
 
-  // 击杀数(右上角; 金币已改为每人独立,显示在各自血条旁)
+  // 击杀数/FPS(右下角; 金币已改为每人独立,显示在各自面板)
   ctx.textAlign='right'; ctx.fillStyle='#ff8a5c'; ctx.font='bold 14px "Press Start 2P",monospace';
-  ctx.fillText(`💀 ${G.kills}`, VIEW_W-110, 34);
+  ctx.fillText(`💀 ${G.kills}`, VIEW_W-20, VIEW_H-36);
   ctx.fillStyle='#8ab'; ctx.font='10px "Press Start 2P",monospace';
-  ctx.fillText(`${G.fps}fps`, VIEW_W-20, 58);
+  ctx.fillText(`${G.fps}fps`, VIEW_W-20, VIEW_H-18);
 
   // 连击(右侧中部,有连击时显示)
   if(G.combo>1){
