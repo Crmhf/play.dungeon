@@ -100,6 +100,12 @@ const G = {
   time: 0, fps: 60, _fpsAcc: 0, _fpsN: 0,
   portal: null, levelTrans: 0,
   bestWave: 0,
+  // 新增: 连击 / 慢镜头 / 道具 / 陷阱 / 复活 / 局外
+  combo: 0, comboT: 0, comboBest: 0, comboMul: 1,
+  timeScale: 1, timeScaleT: 0,
+  props: [], traps: [],
+  reviveCoins: 0, reviveProgress: 0,
+  meta: null,
 };
 
 // ---------- 输入 ----------
@@ -206,6 +212,7 @@ function makePlayer(heroKey, slot){ // slot 0=P1 1=P2
     dmgMul:1, rateMul:1, projMul:1, rangeMul:1, shots:1, dashMul:1,
     iframeBonus:0, regen:0, lifesteal:0, thorns:0, thunder:0,
     killExplode:false, minions:0,
+    critChance:0.1, reviveCoins:0, weapon:null, elem:null,
     atkCd:0, dashCd:0, dashing:0, dashDx:0, dashDy:0, invuln:0,
     skillCd:0, skillMax:6,
     animT:0, walkT:0, state:'idle',
@@ -234,8 +241,10 @@ function playerAttack(p){
       const d=dist(p.x,p.y,e.x,e.y);
       if(d > range+e.r) continue;
       let da = Math.abs(((angleTo(p.x,p.y,e.x,e.y)-p.aimAngle)+Math.PI*3)%(Math.PI*2)-Math.PI);
-      if(da < 1.1){ damageEnemy(e, p.atk*p.dmgMul, p); hitAny=true; }
+      if(da < 1.1){ damageEnemy(e, p.atk*p.dmgMul, p, {knockback:t.arc?160:90}); hitAny=true; }
     }
+    // 近战可打碎道具
+    tryBreakProps(p.x+Math.cos(p.aimAngle)*range*0.6, p.y+Math.sin(p.aimAngle)*range*0.6, range*0.7);
     // 近战挥砍特效
     G.particles.push({slash:true,x:p.x,y:p.y,ang:p.aimAngle,life:0.12,maxLife:0.12,color:p.color,range});
     if(hitAny){ hitStop(0.03); addShake(3,0.08); }
@@ -310,23 +319,40 @@ function makeBoss(levelIdx){
   return e;
 }
 
-function damageEnemy(e, dmg, source){
+// 伤害数字分层: 普通金 / 暴击红大 / 吸血绿 / 雷霆黄
+function damageEnemy(e, dmg, source, opts){
   if(!e.alive) return;
+  opts=opts||{};
+  // 暴击
+  let crit=false;
+  if(source && !opts.noCrit){ const cr=(source.critChance||0.1); if(Math.random()<cr){ crit=true; dmg*=2; } }
+  // 连击倍率
+  if(source) dmg*=G.comboMul;
   e.hp-=dmg; e.hitT=0.12;
-  spawnFloater(e.x, e.y-e.r-6, Math.round(dmg), '#ffd34d', e.isBoss?22:15);
-  spawnParticles(e.x, e.y, '#ff6a5c', 4, 90, 0.3, 3);
-  if(source && source.lifesteal){ source.hp=Math.min(source.maxHp, source.hp+dmg*source.lifesteal); }
+  // 击退
+  if(source && !e.isBoss){ const a=angleTo(source.x,source.y,e.x,e.y); const kb=opts.knockback||90;
+    e.vx+=Math.cos(a)*kb; e.vy+=Math.sin(a)*kb; }
+  // 伤害数字分层
+  const col = opts.color || (crit?'#ff4d4d':(opts.elem==='fire'?'#ff9540':opts.elem==='thunder'?'#ffe95c':opts.elem==='poison'?'#8ee05c':'#ffd34d'));
+  spawnFloater(e.x+rand(-6,6), e.y-e.r-6, Math.round(dmg)+(crit?'!':''), col, crit?(e.isBoss?30:22):(e.isBoss?22:15));
+  spawnParticles(e.x, e.y, crit?'#ff4d4d':'#ff6a5c', crit?8:4, 90, 0.3, 3);
+  if(source && source.lifesteal){ const heal=dmg*source.lifesteal; source.hp=Math.min(source.maxHp, source.hp+heal);
+    spawnFloater(source.x, source.y-source.r-16, '+'+Math.round(heal), '#7ee081', 13); }
   if(source && Math.random()<source.thunder){ // 雷霆
     playSfx('explode',0.5); addShake(5,0.1);
-    for(const o of G.enemies){ if(o.alive&&dist(e.x,e.y,o.x,o.y)<120){ o.hp-=dmg*0.6; o.hitT=0.1; } }
+    for(const o of G.enemies){ if(o.alive&&dist(e.x,e.y,o.x,o.y)<120){ o.hp-=dmg*0.6; o.hitT=0.1; spawnFloater(o.x,o.y-o.r-6,Math.round(dmg*0.6),'#ffe95c',13); } }
     for(let i=0;i<10;i++) spawnParticles(e.x,e.y,'#ffe95c',1,200,0.3,3);
   }
+  if(crit){ addShake(4,0.08); playSfx('hit',0.6); }
   if(e.hp<=0){ killEnemy(e, source); }
 }
 
 function killEnemy(e, source){
   if(!e.alive) return;
   e.alive=false; G.kills++;
+  // 连击
+  G.combo++; G.comboT=3; G.comboBest=Math.max(G.comboBest,G.combo);
+  G.comboMul=1+Math.min(0.5, G.combo*0.02); // 每连击+2%伤害,上限50%
   playSfx('hit',0.5);
   spawnParticles(e.x,e.y,'#ffffff',e.isBoss?30:10,e.isBoss?240:140,0.5,4);
   spawnParticles(e.x,e.y,'#8a2a3a',e.isBoss?20:8,120,0.5,4);
@@ -334,13 +360,14 @@ function killEnemy(e, source){
   const gd=e.gold;
   for(let i=0;i<Math.min(5,Math.ceil(gd/3));i++) G.pickups.push({x:e.x+rand(-16,16),y:e.y+rand(-16,16),vx:rand(-60,60),vy:rand(-60,60),kind:'coin',val:Math.ceil(gd/Math.min(5,Math.ceil(gd/3))),life:20,t:0});
   if(Math.random()<0.06) G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'heart',val:20,life:20,t:0});
-  if(Math.random()<0.02) G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'revive',val:1,life:25,t:0});
+  if(Math.random()<0.03) G.pickups.push({x:e.x,y:e.y,vx:0,vy:0,kind:'revive',val:1,life:25,t:0});
   if(source && source.killExplode){ playSfx('explode',0.6);
-    for(const o of G.enemies){ if(o.alive&&dist(e.x,e.y,o.x,o.y)<110) damageEnemy(o,20,source); }
+    for(const o of G.enemies){ if(o.alive&&dist(e.x,e.y,o.x,o.y)<110) damageEnemy(o,20,source,{noCrit:true}); }
     for(let i=0;i<12;i++) spawnParticles(e.x,e.y,'#ff9540',1,220,0.4,4);
   }
-  if(e.isBoss){ G.bossesDown++; addShake(14,0.4); hitStop(0.15); playSfx('explode',1);
-    spawnFloater(e.x,e.y-40,'BOSS 击破!','#ffd34d',34); }
+  if(e.isBoss){ G.bossesDown++; addShake(16,0.5); hitStop(0.2); playSfx('explode',1);
+    G.timeScale=0.25; G.timeScaleT=0.9; // Boss 死亡慢镜头
+    spawnFloater(e.x,e.y-40,'BOSS 击破!','#ffd34d',36); }
 }
 
 // ---------- 敌人 AI ----------
@@ -500,6 +527,8 @@ function startWave(){
   }
   G.waveTimer=0;
   G.state='play';
+  // 每波开始刷新场景道具与陷阱(仅本关第1波)
+  if(waveInLvl===1){ spawnProps(); spawnTraps(); }
   spawnFloater(WORLD_W/2, WORLD_H/2-120, `第 ${G.wave} 波`, '#fff', 36);
   if(waveInLvl===1 && G.wave>1) spawnFloater(WORLD_W/2, WORLD_H/2-160, LEVEL_DEFS[lvl].name, LEVEL_DEFS[lvl].tint, 28);
 }
@@ -596,10 +625,16 @@ function doVictory(){
 
 // ---------- 主更新 ----------
 function update(dt){
+  // 慢镜头(Boss死亡)
+  if(G.timeScaleT>0){ G.timeScaleT-=dt; if(G.timeScaleT<=0) G.timeScale=1; }
+  dt*=G.timeScale;
   G.time+=dt;
   // 帧率统计
   G._fpsAcc+=dt; G._fpsN++;
   if(G._fpsAcc>=0.5){ G.fps=Math.round(G._fpsN/G._fpsAcc); G._fpsAcc=0; G._fpsN=0; }
+
+  // 连击衰减
+  if(G.comboT>0){ G.comboT-=dt; if(G.comboT<=0){ G.combo=0; G.comboMul=1; } }
 
   // 打击停顿 & 屏幕震动衰减
   if(G.hitStop>0){ G.hitStop-=dt; return; }
@@ -616,6 +651,8 @@ function update(dt){
     updateProjectiles(dt);
     // 拾取
     updatePickups(dt);
+    // 道具 / 陷阱 / 复活
+    updateProps(dt); updateTraps(dt); updateRevive(dt);
     // 相机
     updateCamera(dt);
   }
@@ -680,6 +717,7 @@ function updateProjectiles(dt){
   // 玩家弹道
   for(const pr of G.projectiles){
     pr.x+=pr.vx*dt; pr.y+=pr.vy*dt; pr.life-=dt;
+    tryBreakProps(pr.x,pr.y,pr.r); // 弹道打碎道具
     for(const e of G.enemies){
       if(!e.alive||pr.dead)continue;
       if(dist(pr.x,pr.y,e.x,e.y)<pr.r+e.r){
@@ -722,7 +760,7 @@ function updatePickups(dt){
         pk.dead=true;
         if(pk.kind==='coin'){ G.gold+=pk.val; playSfx('hit',0.2); spawnFloater(best.x,best.y-24,'+'+pk.val,'#ffd34d',13); }
         else if(pk.kind==='heart'){ best.hp=Math.min(best.maxHp,best.hp+pk.val); spawnFloater(best.x,best.y-24,'+'+pk.val+'❤','#7ee081',15); }
-        else if(pk.kind==='revive'){ G.reviveCoins=(G.reviveCoins||0)+1; spawnFloater(best.x,best.y-24,'复活币!','#5cd4ff',16); }
+        else if(pk.kind==='revive'){ best.reviveCoins=(best.reviveCoins||0)+1; spawnFloater(best.x,best.y-24,'复活币!','#5cd4ff',16); }
         spawnParticles(best.x,best.y,'#ffd34d',5,80,0.3,3);
       }
     }
@@ -762,6 +800,9 @@ function render(){
 
   // 拾取物
   for(const pk of G.pickups) drawPickup(ctx,pk);
+  // 道具与陷阱(场景层)
+  for(const pr of G.props) drawProp(ctx,pr);
+  for(const tr of G.traps) drawTrap(ctx,tr);
   // 随从
   for(const m of G.minions) if(m.alive) drawMinion(ctx,m);
   // 敌人(按y排序)
@@ -939,4 +980,105 @@ function drawVignette(ctx){
   const g=ctx.createRadialGradient(VIEW_W/2,VIEW_H/2,VIEW_H*0.4,VIEW_W/2,VIEW_H/2,VIEW_H*0.85);
   g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,0.55)');
   ctx.fillStyle=g;ctx.fillRect(0,0,VIEW_W,VIEW_H);
+}
+
+// ========== 环境道具(可打碎) ==========
+function spawnProps(){
+  G.props=[];
+  const lvl=G.level;
+  // 每关随机摆南瓜灯/蜡烛(万圣节关卡更多)
+  const n = lvl===4? 10 : 5;
+  for(let i=0;i<n;i++){
+    const kind = (lvl===4||Math.random()<0.5)?'jack':'candle';
+    const x=rand(120,WORLD_W-120), y=rand(120,WORLD_H-120);
+    G.props.push({kind,x,y,r:20,hp:1,alive:true,frame:irand(1,8),t:rand(0,2)});
+  }
+}
+function updateProps(dt){
+  for(const pr of G.props){ if(pr.alive) pr.t+=dt; }
+  G.props=G.props.filter(p=>p.alive);
+}
+function breakProp(pr){
+  pr.alive=false;
+  playSfx('hit',0.4);
+  spawnParticles(pr.x,pr.y, pr.kind==='jack'?'#ff9540':'#ffe95c', 10, 120, 0.4, 4);
+  // 掉落
+  const r=Math.random();
+  if(r<0.4) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'coin',val:irand(3,8),life:20,t:0});
+  else if(r<0.55) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'heart',val:15,life:20,t:0});
+  else if(r<0.62) G.pickups.push({x:pr.x,y:pr.y,vx:0,vy:0,kind:'revive',val:1,life:25,t:0});
+}
+// 玩家近战/弹道可打碎道具 — 在近战与弹道命中检测里调用
+function tryBreakProps(x,y,rad){
+  for(const pr of G.props){ if(pr.alive && dist(x,y,pr.x,pr.y)<rad+pr.r) breakProp(pr); }
+}
+
+// ========== 陷阱 ==========
+function spawnTraps(){
+  G.traps=[];
+  const n = 2+G.level; // 越往后越多
+  for(let i=0;i<n;i++){
+    G.traps.push({x:rand(200,WORLD_W-200),y:rand(200,WORLD_H-200),r:26,t:rand(0,2),cd:0,dmg:14+G.level*4,active:false});
+  }
+}
+function updateTraps(dt){
+  for(const tr of G.traps){
+    tr.t+=dt; if(tr.cd>0)tr.cd-=dt;
+    tr.active = (tr.t%2.5)<0.6; // 周期性弹出尖刺
+    if(tr.active && tr.cd<=0){
+      for(const p of G.players){ if(p.alive&&p.invuln<=0&&dist(p.x,p.y,tr.x,tr.y)<tr.r){ hurtPlayer(p,tr.dmg,null); tr.cd=0.5; } }
+    }
+  }
+}
+
+// ========== 复活救援 ==========
+function updateRevive(dt){
+  if(G.players.length<2){ G.reviveProgress=0; return; }
+  const dead=G.players.find(p=>!p.alive);
+  if(!dead){ G.reviveProgress=0; return; }
+  const saver=G.players.find(p=>p.alive);
+  if(!saver) return;
+  const near = dist(saver.x,saver.y,dead.x,dead.y)<70;
+  const hasCoin = (saver.reviveCoins||0)+(G.reviveCoins||0) > 0;
+  if(near && hasCoin){
+    G.reviveProgress+=dt;
+    if(G.reviveProgress>=2){ // 2秒救起
+      // 消耗一个复活币
+      if(saver.reviveCoins>0) saver.reviveCoins--; else G.reviveCoins--;
+      dead.alive=true; dead.hp=Math.round(dead.maxHp*0.5); dead.invuln=2;
+      G.reviveProgress=0;
+      playSfx('magic',0.8); addShake(6,0.2);
+      spawnFloater(dead.x,dead.y-40,'复活!','#5cd4ff',30);
+      spawnParticles(dead.x,dead.y,'#5cd4ff',24,200,0.7,4);
+    }
+  } else { G.reviveProgress=Math.max(0,G.reviveProgress-dt*2); }
+}
+
+// ========== 慢镜头 & 连击已在 update 集成 ==========
+
+// ========== 道具/陷阱 渲染 ==========
+function drawProp(ctx,pr){
+  drawShadow(ctx,pr.x,pr.y,pr.r);
+  const bob=Math.sin(pr.t*3)*1;
+  ctx.imageSmoothingEnabled=false;
+  const img=G.imgs[pr.kind+'_'+pr.frame];
+  if(img){ const s=pr.r*2.4; ctx.drawImage(img, pr.x-s/2, pr.y-s*0.7+bob, s, s); }
+  // 发光
+  ctx.save(); ctx.globalAlpha=0.25+Math.sin(pr.t*4)*0.1;
+  ctx.fillStyle=pr.kind==='jack'?'#ff9540':'#ffe95c';
+  ctx.beginPath();ctx.arc(pr.x,pr.y-pr.r*0.3,pr.r*0.9,0,Math.PI*2);ctx.fill(); ctx.restore();
+}
+function drawTrap(ctx,tr){
+  // 地刺陷阱底座
+  ctx.fillStyle='rgba(0,0,0,0.4)';
+  ctx.beginPath();ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(150,150,170,0.5)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2);ctx.stroke();
+  // 弹出尖刺
+  if(tr.active){
+    ctx.fillStyle='#c8d0e0';
+    for(let i=0;i<6;i++){ const a=i/6*Math.PI*2;
+      const sx=tr.x+Math.cos(a)*tr.r*0.5, sy=tr.y+Math.sin(a)*tr.r*0.5;
+      ctx.beginPath();ctx.moveTo(sx-5,sy);ctx.lineTo(sx+5,sy);ctx.lineTo(sx,sy-14);ctx.fill(); }
+  }
 }

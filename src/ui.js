@@ -29,6 +29,38 @@ function drawHUD(ctx){
   ctx.fillStyle='#8ab'; ctx.font='10px "Press Start 2P",monospace';
   ctx.fillText(`${G.fps}fps`, VIEW_W-20, 58);
 
+  // 连击(右侧中部,有连击时显示)
+  if(G.combo>1){
+    const pulse=1+Math.sin(G.time*12)*0.06;
+    ctx.save(); ctx.translate(VIEW_W-90,140); ctx.scale(pulse,pulse);
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.beginPath();ctx.arc(0,0,46,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=G.combo>=20?'#ffd34d':G.combo>=10?'#ff9540':'#b06ce0'; ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(0,0,46,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.font='bold 26px "Press Start 2P",monospace';
+    ctx.fillText(G.combo, 0, 2);
+    ctx.fillStyle='#c8bce0'; ctx.font='9px "Press Start 2P",monospace';
+    ctx.fillText('连击', 0, 22);
+    // 连击伤害加成
+    if(G.comboMul>1){ ctx.fillStyle='#ffd34d'; ctx.font='9px "Press Start 2P",monospace';
+      ctx.fillText('+'+Math.round((G.comboMul-1)*100)+'%', 0, 36); }
+    ctx.restore();
+  }
+
+  // 复活进度(队友倒地时)
+  const deadP = G.players.find(p=>!p.alive);
+  if(deadP && G.players.length>1){
+    ctx.textAlign='center';
+    ctx.fillStyle='#ff5c5c'; ctx.font='bold 14px "Press Start 2P",monospace';
+    ctx.fillText(`P${deadP.slot+1} 倒下了!`, VIEW_W/2, 96);
+    const coins=(G.players.find(p=>p.alive)||{}).reviveCoins||G.reviveCoins||0;
+    if(coins>0){ ctx.fillStyle='#5cd4ff'; ctx.font='11px "Press Start 2P",monospace';
+      ctx.fillText(`靠近按住复活 (${coins}币)`, VIEW_W/2, 118);
+      if(G.reviveProgress>0){ drawBar(ctx, VIEW_W/2-90, 128, 180, 8, G.reviveProgress/2, '#5cd4ff'); } }
+    else { ctx.fillStyle='#8a7ab0'; ctx.font='10px "Press Start 2P",monospace';
+      ctx.fillText('需要复活币(打怪/南瓜灯掉落)', VIEW_W/2, 118); }
+  }
+
   // 操作提示(底部) — 触屏设备改显示简化提示
   ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='10px "Press Start 2P",monospace';
   if(G.isTouch){ ctx.fillText('左摇杆移动 · ⚔️攻击 · 💨闪避 · ✨技能', VIEW_W/2, VIEW_H-12); }
