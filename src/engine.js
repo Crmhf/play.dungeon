@@ -10,6 +10,7 @@ const WORLD_W = 2400, WORLD_H = 1500;
 const WAVES_PER_LEVEL = 6;          // 每关 6 波
 const LEVELS = 5;                    // 5 主题关卡
 const TOTAL_WAVES = WAVES_PER_LEVEL * LEVELS; // 30
+const DEATH_ANIM_DUR = 0.38;         // 小怪死亡消散动画时长(秒)
 
 // ---------- 资源清单 ----------
 const ASSETS = {
@@ -31,31 +32,38 @@ const ASSETS = {
 };
 
 // 敌人精灵表定义: dir / 移动图 / 帧宽 / 帧高 / ai / 基础属性
+// faceLeft: 素材本身默认朝左(绘制时需按 face 再翻一次), 避免"倒着走"
 const ENEMY_TYPES = {
   slime:    { dir:'Slime',    sheet:'Idle-Run (44x30).png', fw:44, fh:30, ai:'chase',  hp:20, spd:60,  dmg:6,  gold:2, scale:2.2 },
   bat:      { dir:'Bat',      sheet:'Flying (46x30).png',   fw:46, fh:30, ai:'chase',  hp:14, spd:120, dmg:5,  gold:2, scale:2.2, fly:true },
-  chicken:  { dir:'Chicken',  sheet:'Run (32x34).png',      fw:32, fh:34, ai:'chase',  hp:16, spd:95,  dmg:5,  gold:2, scale:2.2 },
-  bunny:    { dir:'Bunny',    sheet:'Run (38x34).png',      fw:38, fh:34, ai:'chase',  hp:18, spd:110, dmg:6,  gold:3, scale:2.2 },
+  chicken:  { dir:'Chicken',  sheet:'Run (32x34).png',      fw:32, fh:34, ai:'chase',  hp:16, spd:95,  dmg:5,  gold:2, scale:2.2, faceLeft:true },
+  bunny:    { dir:'Bunny',    sheet:'Run (34x44).png',      fw:34, fh:44, ai:'chase',  hp:18, spd:110, dmg:6,  gold:3, scale:2.2 },
   angrypig: { dir:'AngryPig', sheet:'Run (36x30).png',      fw:36, fh:30, ai:'elite',  hp:45, spd:85,  dmg:12, gold:5, scale:2.4 },
   skull:    { dir:'Skull',    sheet:'Idle 1 (52x54).png',   fw:52, fh:54, ai:'elite',  hp:40, spd:70,  dmg:10, gold:5, scale:2.0, fly:true },
-  snail:    { dir:'Snail',    sheet:'Walk (38x24).png',     fw:38, fh:24, ai:'ranged', hp:55, spd:35,  dmg:8,  gold:6, scale:2.4, proj:'shell' },
-  rino:     { dir:'Rino',     sheet:'Run (52x34).png',      fw:52, fh:34, ai:'charge', hp:70, spd:70,  dmg:16, gold:8, scale:2.4 },
-  bee:      { dir:'Bee',      sheet:'Attack (38x34).png',   fw:38, fh:34, ai:'ranged', hp:24, spd:80,  dmg:8,  gold:5, scale:2.2, fly:true, proj:'sting' },
-  trunk:    { dir:'Trunk',    sheet:'Attack (64x32).png',   fw:64, fh:32, ai:'lobber', hp:65, spd:50,  dmg:14, gold:8, scale:2.4, proj:'rock' },
-  ghost:    { dir:'Ghost',    sheet:'Appear (44x30).png',   fw:44, fh:30, ai:'stealth',hp:30, spd:75,  dmg:12, gold:7, scale:2.2, fly:true },
+  snail:    { dir:'Snail',    sheet:'Walk (38x24).png',     fw:38, fh:24, ai:'ranged', hp:55, spd:35,  dmg:8,  gold:6, scale:2.4, proj:'shell', faceLeft:true },
+  rino:     { dir:'Rino',     sheet:'Run (52x34).png',      fw:52, fh:34, ai:'charge', hp:70, spd:70,  dmg:16, gold:8, scale:2.4, faceLeft:true },
+  bee:      { dir:'Bee',      sheet:'Attack (36x34).png',   fw:36, fh:34, ai:'ranged', hp:24, spd:80,  dmg:8,  gold:5, scale:2.2, fly:true, proj:'sting' },
+  trunk:    { dir:'Trunk',    sheet:'Attack (64x32).png',   fw:64, fh:32, ai:'lobber', hp:65, spd:50,  dmg:14, gold:8, scale:2.4, proj:'rock', faceLeft:true },
+  ghost:    { dir:'Ghost',    sheet:'Idle (44x30).png',     fw:44, fh:30, ai:'stealth',hp:30, spd:75,  dmg:12, gold:7, scale:2.2, fly:true },
   mushroom: { dir:'Mushroom', sheet:'Run (32x32).png',      fw:32, fh:32, ai:'chase',  hp:30, spd:65,  dmg:8,  gold:4, scale:2.2 },
-  plant:    { dir:'Plant',    sheet:'Attack (44x42).png',   fw:44, fh:42, ai:'ranged', hp:50, spd:0,   dmg:10, gold:6, scale:2.2, proj:'seed' },
-  chameleon:{ dir:'Chameleon',sheet:'Run (72x32).png',      fw:72, fh:32, ai:'stealth',hp:48, spd:90,  dmg:13, gold:8, scale:2.0 },
+  plant:    { dir:'Plant',    sheet:'Attack (44x42).png',   fw:44, fh:42, ai:'ranged', hp:50, spd:0,   dmg:10, gold:6, scale:2.2, proj:'seed', faceLeft:true },
+  chameleon:{ dir:'Chameleon',sheet:'Run (84x38).png',      fw:84, fh:38, ai:'stealth',hp:48, spd:90,  dmg:13, gold:8, scale:2.0 },
   skeleton: { frames:'assets/sprites/enemies/2dpd/skeleton1/v1/skeleton_v1_%d.png', nframes:4, ai:'summoner', hp:60, spd:60, dmg:12, gold:9, scale:2.6 },
   vampire:  { frames:'assets/sprites/enemies/2dpd/vampire/v1/vampire_v1_%d.png', nframes:4, ai:'charge', hp:80, spd:95, dmg:18, gold:12, scale:2.6 },
 };
 
 // 英雄定义: 取自 Dungeon_Character.png (16px 网格) 与 priest 逐帧
+// 平衡设计: 近战血厚/技能偏防守反击, 远程血薄/技能偏爆发, CD 与威力成正比
+// skill: { name 技能名 / cd 冷却 / color 特效色 / desc 描述 }
 const HERO_TYPES = {
-  knight: { name:'骑士', desc:'近战肉盾 · 砍一片', sheet:'chars', col:0, row:0, hp:200, spd:150, atk:22, rate:0.55, range:70,  arc:true,  projSpeed:0,   color:'#c8d0e0', sfx:'sword' },
-  archer: { name:'弓手', desc:'远程 · 穿透箭',     sheet:'chars', col:6, row:3, hp:120, spd:165, atk:14, rate:0.32, range:420, arc:false, projSpeed:520, pierce:true, color:'#a8e063', sfx:'bow' },
-  mage:   { name:'法师', desc:'中距 AOE · 弹射魔法', sheet:'priest', variant:1, hp:95,  spd:140, atk:18, rate:0.50, range:380, arc:false, projSpeed:420, bounce:2, aoe:60, color:'#b06ce0', sfx:'magic' },
-  rogue:  { name:'盗贼', desc:'极快高闪 · 双刀',   sheet:'chars', col:0, row:1, hp:85,  spd:195, atk:12, rate:0.18, range:64,  arc:true,  projSpeed:0,   dodgeCd:1.6, color:'#e0b25c', sfx:'swing' },
+  knight: { name:'骑士', desc:'近战肉盾 · 砍一片', sheet:'chars', col:0, row:0, hp:240, spd:150, atk:23, rate:0.50, range:70,  arc:true,  projSpeed:0,   color:'#c8d0e0', sfx:'sword',
+    skill:{ name:'旋风斩', cd:7, color:'#9adcff', desc:'大范围横扫+3秒减伤50%' } },
+  archer: { name:'弓手', desc:'远程 · 穿透箭',     sheet:'chars', col:6, row:3, hp:115, spd:165, atk:15, rate:0.32, range:420, arc:false, projSpeed:520, pierce:true, color:'#a8e063', sfx:'bow',
+    skill:{ name:'天降箭雨', cd:9, color:'#a8e063', desc:'目标区域倾泻20支落箭' } },
+  mage:   { name:'法师', desc:'中距 AOE · 弹射魔法', sheet:'priest', variant:1, hp:100, spd:140, atk:19, rate:0.50, range:380, arc:false, projSpeed:420, bounce:2, aoe:60, color:'#b06ce0', sfx:'magic',
+    skill:{ name:'奥术湮灭', cd:12, color:'#e08cff', desc:'全屏级大爆炸,毁天灭地' } },
+  rogue:  { name:'盗贼', desc:'极快高闪 · 双刀',   sheet:'chars', col:0, row:1, hp:115, spd:195, atk:13, rate:0.18, range:64,  arc:true,  projSpeed:0,   dodgeCd:1.3, color:'#e0b25c', sfx:'swing',
+    skill:{ name:'暗影突袭', cd:6, color:'#e0b25c', desc:'隐身冲刺+4秒刀刀暴击' } },
 };
 
 // 关卡主题
@@ -125,10 +133,14 @@ const G = {
 };
 
 // ---------- 输入 ----------
+// 攻击全自动(锁定最近怪); 玩家只需 移动 / 技能 / 闪避
+// keyHit: 点按型按键(技能/闪避)在 keydown 时置位, 由 updatePlayer 消费,
+//         避免快速点按时 keydown/keyup 落在同一帧间隙被漏检
 const keys = {};
+const keyHit = {};
 const KEYMAP = {
-  p1: { up:'KeyW', down:'KeyS', left:'KeyA', right:'KeyD', atk:'KeyC', dash:'KeyF', skill:'KeyB' },
-  p2: { up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight', atk:'KeyL', dash:'KeyI', skill:'KeyJ' },
+  p1: { up:'KeyW', down:'KeyS', left:'KeyA', right:'KeyD', skill:'KeyC', dash:'KeyF' },
+  p2: { up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight', skill:'KeyL', dash:'KeyI' },
 };
 
 // ---------- 资源加载 ----------
@@ -234,7 +246,7 @@ function makePlayer(heroKey, slot){ // slot 0=P1 1=P2
     iframeBonus:0, regen:0, lifesteal:0, thorns:0, thunder:0,
     killExplode:false, minions:0,
     atkCd:0, dashCd:0, dashing:0, dashDx:0, dashDy:0, invuln:0,
-    skillCd:0, skillMax:6,
+    skillCd:0, skillMax:t.skill.cd, guardT:0, shadowT:0, // guardT: 骑士减伤 / shadowT: 盗贼必暴
     animT:0, walkT:0, state:'idle',
     alive:true, color:t.color,
     ai:false, auto:true, // ai=AI队友 / auto=自动战斗
@@ -314,24 +326,33 @@ function playerAttack(p){
 
 function playerSkill(p){
   if(p.skillCd>0) return;
+  const sk=p.def.skill;
   p.skillCd=p.skillMax;
-  const t=p.def;
-  if(p.heroKey==='knight'){ // 旋风斩
+  // 释放时头顶显示技能名
+  spawnFloater(p.x, p.y-p.r-24, sk.name+'!', sk.color, 22);
+  if(p.heroKey==='knight'){ // 旋风斩: 大横扫 + 3秒减伤护盾(肉盾特色: 攻守兼备)
     playSfx('heavy',0.9); addShake(8,0.2);
-    for(const e of G.enemies){ if(!e.alive)continue; if(dist(p.x,p.y,e.x,e.y)<160+e.r) damageEnemy(e,p.atk*p.dmgMul*2,p); }
-    for(let a=0;a<Math.PI*2;a+=0.4) G.particles.push({x:p.x,y:p.y,vx:Math.cos(a)*260,vy:Math.sin(a)*260,life:0.4,maxLife:0.4,color:'#fff',size:4});
-  } else if(p.heroKey==='archer'){ // 箭雨
+    for(const e of G.enemies){ if(!e.alive)continue; if(dist(p.x,p.y,e.x,e.y)<190+e.r) damageEnemy(e,p.atk*p.dmgMul*2.2,p); }
+    for(let a=0;a<Math.PI*2;a+=0.35) G.particles.push({x:p.x,y:p.y,vx:Math.cos(a)*280,vy:Math.sin(a)*280,life:0.4,maxLife:0.4,color:sk.color,size:4});
+    p.guardT=3; // 减伤50% 3秒
+    spawnFloater(p.x, p.y+p.r+18, '减伤护盾!', '#5cd4ff', 14);
+  } else if(p.heroKey==='archer'){ // 天降箭雨: 锁定最近怪区域, 倾泻落箭(远程压场)
     playSfx('bow',1); addShake(4,0.15);
-    for(let i=0;i<16;i++){ const a=rand(0,Math.PI*2), spd=500*p.projMul;
-      G.projectiles.push({x:p.x,y:p.y-200,vx:Math.cos(a)*spd*0.3,vy:spd,dmg:p.atk*p.dmgMul,r:8,pierce:true,bounce:0,aoe:0,color:p.color,owner:p,life:0.9,kind:'bow'}); }
-  } else if(p.heroKey==='mage'){ // 奥术爆发
-    playSfx('explode',0.9); addShake(9,0.25); hitStop(0.05); screenFlash('#c06ce0',0.35);
-    for(const e of G.enemies){ if(!e.alive)continue; if(dist(p.x,p.y,e.x,e.y)<260+e.r) damageEnemy(e,p.atk*p.dmgMul*2.5,p); }
-    for(let i=0;i<30;i++) spawnParticles(p.x,p.y,'#c06ce0',1,300,0.6,5);
-  } else if(p.heroKey==='rogue'){ // 暗影突袭(隐身+加速)
-    playSfx('swing',0.8); p.invuln=Math.max(p.invuln,1.2); p.dashing=0.35;
+    const tgt=playerNearestEnemy(p);
+    const cx=tgt?tgt.x:p.x, cy=tgt?tgt.y:p.y;
+    for(let i=0;i<20;i++){ const ox=rand(-170,170), oy=rand(-170,170);
+      G.projectiles.push({x:cx+ox, y:cy+oy-300, vx:rand(-30,30), vy:580*p.projMul, dmg:p.atk*p.dmgMul*1.2, r:8, pierce:true, bounce:0, aoe:0, color:p.color, owner:p, life:0.9, kind:'bow'}); }
+  } else if(p.heroKey==='mage'){ // 奥术湮灭: 全屏级大爆炸(玻璃大炮: 最高爆发最长CD)
+    playSfx('explode',1); addShake(14,0.4); hitStop(0.08); screenFlash('#e08cff',0.5);
+    for(const e of G.enemies){ if(!e.alive)continue; if(dist(p.x,p.y,e.x,e.y)<340+e.r) damageEnemy(e,p.atk*p.dmgMul*3.2,p,{knockback:260}); }
+    G.particles.push({shock:true,x:p.x,y:p.y,r:10,maxR:340,life:0.4,maxLife:0.4,color:sk.color});
+    for(let i=0;i<40;i++) spawnParticles(p.x,p.y,sk.color,1,340,0.7,5);
+  } else if(p.heroKey==='rogue'){ // 暗影突袭: 隐身冲刺 + 4秒刀刀暴击(刺客节奏)
+    playSfx('swing',0.8);
+    p.invuln=Math.max(p.invuln,1.2); p.dashing=0.35; p.shadowT=4;
     const a=p.aimAngle; p.dashDx=Math.cos(a); p.dashDy=Math.sin(a);
-    spawnParticles(p.x,p.y,'#e0b25c',14,160,0.5,4);
+    spawnParticles(p.x,p.y,sk.color,16,180,0.5,4);
+    spawnFloater(p.x, p.y+p.r+18, '刀刀暴击!', '#ff4d4d', 14);
   }
 }
 
@@ -352,10 +373,10 @@ function playerDash(p){
 function makeEnemy(type, x, y, hpMul=1){
   const t=ENEMY_TYPES[type];
   const r = t.fw? (t.fw*t.scale*0.32) : 18;
-  return { type, def:t, x, y, vx:0, vy:0, r,
+  return { type, def:t, x, y, vx:0, vy:0, kvx:0, kvy:0, r,
     hp: t.hp*hpMul, maxHp: t.hp*hpMul, spd:t.spd, dmg:t.dmg,
     mass: Math.max(0.5, r/22), // 质量: 越大越难击退
-    face:1, animT:rand(0,1), hitT:0, alive:true, spawnT:0.35, // spawnT: 出生弹出动画
+    face:1, animT:rand(0,1), hitT:0, alive:true, spawnT:0.35, deathT:-1, // spawnT: 出生弹出 / deathT: 死亡消散
     aiT:0, aiState:'idle', chargeDx:0, chargeDy:0, stealth:0, shootCd:rand(1,2),
     touchCd:0, gold:t.gold, isBoss:false };
 }
@@ -375,18 +396,18 @@ function makeBoss(levelIdx){
 function damageEnemy(e, dmg, source, opts){
   if(!e.alive) return;
   opts=opts||{};
-  // 暴击
+  // 暴击(盗贼暗影突袭期间刀刀暴击)
   let crit=false;
-  if(source && !opts.noCrit){ const cr=(source.critChance||0.1); if(Math.random()<cr){ crit=true; dmg*=2; } }
+  if(source && !opts.noCrit){ const cr=source.shadowT>0?1:(source.critChance||0.1); if(Math.random()<cr){ crit=true; dmg*=2; } }
   // 连击倍率
   if(source) dmg*=G.comboMul;
   e.hp-=dmg; e.hitT=0.12;
-  // 击退(物理): 冲量按质量折算, Boss免疫, 由 updateEnemy 的摩擦衰减
+  // 击退(物理): 冲量写入独立通道 kvx/kvy, 不会被 AI 速度覆写, 由 updateEnemy 摩擦衰减
   if(source && !e.isBoss){
     const a=angleTo(source.x,source.y,e.x,e.y);
     const kb=opts.knockback||90;
     const mass = e.mass||1;
-    e.vx+=Math.cos(a)*kb/mass; e.vy+=Math.sin(a)*kb/mass;
+    e.kvx=(e.kvx||0)+Math.cos(a)*kb/mass; e.kvy=(e.kvy||0)+Math.sin(a)*kb/mass;
   }
   // 伤害数字分层
   const col = opts.color || (crit?'#ff4d4d':(opts.elem==='fire'?'#ff9540':opts.elem==='thunder'?'#ffe95c':opts.elem==='poison'?'#8ee05c':'#ffd34d'));
@@ -405,7 +426,7 @@ function damageEnemy(e, dmg, source, opts){
 
 function killEnemy(e, source){
   if(!e.alive) return;
-  e.alive=false; G.kills++;
+  e.alive=false; e.deathT=0; e.hitT=0; G.kills++; // deathT: 播放消散动画后彻底移除
   // 连击
   G.combo++; G.comboT=3; G.comboBest=Math.max(G.comboBest,G.combo);
   G.comboMul=1+Math.min(0.5, G.combo*0.02); // 每连击+2%伤害,上限50%
@@ -494,17 +515,18 @@ function updateEnemy(e, dt){
   // Boss 额外技能
   if(e.isBoss){ updateBoss(e, dt, p, d, a); }
 
-  // 位置积分 + 世界边界(应用减速)
-  e.x=clamp(e.x+e.vx*spdMul*dt, 40, WORLD_W-40);
-  e.y=clamp(e.y+e.vy*spdMul*dt, 40, WORLD_H-40);
+  // 位置积分: AI 速度 + 击退冲量(应用减速), 世界边界
+  const mvx=e.vx+(e.kvx||0), mvy=e.vy+(e.kvy||0);
+  e.x=clamp(e.x+mvx*spdMul*dt, 40, WORLD_W-40);
+  e.y=clamp(e.y+mvy*spdMul*dt, 40, WORLD_H-40);
 
-  // 朝向: 面向实际移动方向(不倒着走); 停下/蓄力时面向玩家
-  if(Math.abs(e.vx)>6) e.face = e.vx>=0?1:-1;
+  // 朝向: 面向实际合速度方向(不倒着走); 停下/蓄力时面向玩家
+  if(Math.abs(mvx)>6) e.face = mvx>=0?1:-1;
   else e.face = p.x>=e.x?1:-1;
 
-  // 摩擦: 击退冲量随时间衰减(恢复自主移动)
+  // 摩擦: 只衰减击退冲量(恢复自主移动), 不衰减 AI 速度
   const fr=Math.exp(-dt*4.5);
-  e.vx*=fr; e.vy*=fr;
+  e.kvx=(e.kvx||0)*fr; e.kvy=(e.kvy||0)*fr;
 
   // 软性推挤: 与玩家重叠时把玩家挤开一点(避免完全穿模)
   if(d < e.r+p.r-2){
@@ -572,6 +594,7 @@ function updateBoss(e, dt, p, d, a){
 // ---------- 玩家受伤 ----------
 function hurtPlayer(p, dmg, from){
   if(p.invuln>0||!p.alive) return;
+  if(p.guardT>0) dmg*=0.5; // 骑士旋风斩护盾: 减伤50%
   p.hp-=dmg; p.invuln=0.6+p.iframeBonus;
   playSfx('hurt',0.7); addShake(6,0.15); hitStop(0.04);
   p.hurtT=0.2; // 受击缩放
@@ -854,9 +877,9 @@ function update(dt){
     for(const p of G.players){ if(!p.alive) continue; if(p.ai) updateAIPlayer(p,dt); else updatePlayer(p,dt); }
     updateMinions(dt);
     // 敌人
-    for(const e of G.enemies) updateEnemy(e,dt);
+    for(const e of G.enemies){ if(e.alive) updateEnemy(e,dt); else if(e.deathT>=0) e.deathT+=dt; }
     separateEnemies(); // 群体分离
-    G.enemies=G.enemies.filter(e=>e.alive||e.hitT>0);
+    G.enemies=G.enemies.filter(e=>e.alive || (e.deathT>=0 && e.deathT<DEATH_ANIM_DUR));
     // 弹道
     updateProjectiles(dt);
     // 拾取
@@ -905,6 +928,7 @@ function updatePlayer(p,dt){
   if(p.atkCd>0)p.atkCd-=dt; if(p.dashCd>0)p.dashCd-=dt;
   if(p.invuln>0)p.invuln-=dt; if(p.skillCd>0)p.skillCd-=dt;
   if(p.hurtT>0)p.hurtT-=dt; // 受击缩放计时
+  if(p.guardT>0)p.guardT-=dt; if(p.shadowT>0)p.shadowT-=dt;
   if(p.regen>0) p.hp=Math.min(p.maxHp,p.hp+p.regen*dt);
 
   if(p.dashing>0){
@@ -935,17 +959,18 @@ function updatePlayer(p,dt){
   }
   p.animT+=dt;
 
-  // 自动战斗开关: 有怪且处于攻击范围时自动出手
-  const wantAtk = keys[map.atk] || (p.auto && tgt);
+  // 攻击全自动: 有怪且处于攻击范围时自动出手(C/L 已改为技能键)
+  const wantAtk = p.auto && tgt;
   if(wantAtk && p.atkCd<=0){ p.atkCd=p.rate*p.rateMul; playerAttack(p); }
-  if(keys[map.dash]){ playerDash(p); keys[map.dash]=false; }
-  if(keys[map.skill]){ playerSkill(p); keys[map.skill]=false; }
+  if(keyHit[map.dash]){ keyHit[map.dash]=false; playerDash(p); }
+  if(keyHit[map.skill]){ keyHit[map.skill]=false; playerSkill(p); }
 }
 
 // ---------- AI 队友 (单人模式) ----------
 function updateAIPlayer(p,dt){
   if(p.atkCd>0)p.atkCd-=dt; if(p.dashCd>0)p.dashCd-=dt;
   if(p.invuln>0)p.invuln-=dt; if(p.skillCd>0)p.skillCd-=dt;
+  if(p.guardT>0)p.guardT-=dt; if(p.shadowT>0)p.shadowT-=dt;
   if(p.regen>0) p.hp=Math.min(p.maxHp,p.hp+p.regen*dt);
 
   const tgt=playerNearestEnemy(p);
@@ -1160,31 +1185,34 @@ function drawPlayer(ctx,p){
   ctx.strokeStyle=p.slot===0?'#5cd4ff':'#ffb34d'; ctx.lineWidth=2;
   ctx.beginPath();ctx.arc(p.x,p.y+p.r*0.8,p.r*0.6,0,Math.PI);ctx.stroke();
 
-  // 技能冷却指示
+  // 骑士减伤护盾(旋风斩后3秒)
+  if(p.guardT>0){ ctx.save(); ctx.globalAlpha=0.35+Math.sin(G.time*10)*0.12;
+    ctx.strokeStyle='#5cd4ff'; ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(p.x,p.y-p.r*0.3,p.r*1.5,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=0.12; ctx.fillStyle='#5cd4ff';
+    ctx.beginPath();ctx.arc(p.x,p.y-p.r*0.3,p.r*1.5,0,Math.PI*2);ctx.fill(); ctx.restore(); }
+  // 盗贼暗影状态(刀刀暴击4秒): 紫黑残影环绕
+  if(p.shadowT>0){ ctx.save(); ctx.globalAlpha=0.4+Math.sin(G.time*14)*0.15;
+    ctx.strokeStyle='#b06ce0'; ctx.lineWidth=2.5; ctx.setLineDash([6,6]);
+    ctx.beginPath();ctx.arc(p.x,p.y-p.r*0.3,p.r*1.4,G.time*3,G.time*3+Math.PI*2);ctx.stroke();
+    ctx.restore(); }
+
+  // 技能冷却指示(饼图+剩余秒数)
   if(p.skillCd>0){ ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.arc(p.x,p.y-p.r-14,6,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#5cd4ff';ctx.beginPath();ctx.arc(p.x,p.y-p.r-14,6,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-p.skillCd/p.skillMax));ctx.fill(); }
+    ctx.fillStyle='#5cd4ff';ctx.beginPath();ctx.arc(p.x,p.y-p.r-14,6,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-p.skillCd/p.skillMax));ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font='bold 10px "Press Start 2P",monospace'; ctx.textAlign='center';
+    ctx.strokeStyle='rgba(0,0,0,0.8)'; ctx.lineWidth=2.5;
+    const cdTxt=p.skillCd.toFixed(1);
+    ctx.strokeText(cdTxt,p.x,p.y-p.r-24); ctx.fillText(cdTxt,p.x,p.y-p.r-24); }
   // 血条
   drawBar(ctx,p.x-p.r,p.y-p.r-10,p.r*2,4,p.hp/p.maxHp,'#7ee081');
 }
 
-function drawEnemy(ctx,e){
+// 绘制敌人精灵帧(含 faceLeft 翻转修正)
+function drawEnemySprite(ctx,e){
   const t=e.def;
-  const alpha = e.aiState==='windup'? 0.7 : (t.ai==='stealth'? (1-(e.stealth||0)) : 1);
-  ctx.save();
-  ctx.globalAlpha=alpha;
-  drawShadow(ctx,e.x,e.y,e.r);
-  const flash=e.hitT>0;
-  ctx.translate(e.x,e.y);
-  // 出生弹出(回弹缩放)
-  let born=1; if(e.spawnT>0){ const t=1-e.spawnT/0.35; born=t<0.7? t/0.7*1.15 : 1.15-(t-0.7)/0.3*0.15; }
-  // 受击压扁回弹(暴击更明显)
-  let sq=1;
-  if(e.critT>0){ e.critT-=0.016; sq=1+Math.sin(e.critT/0.18*Math.PI)*0.25; }
-  else if(e.hitT>0){ sq=1+Math.sin(e.hitT/0.12*Math.PI)*0.12; }
-  ctx.scale(e.face*(e.scaleMul?1:1)*sq*born, (1/sq)*born);
-  const sm = e.scaleMul||1;
+  const sm=e.scaleMul||1;
   ctx.imageSmoothingEnabled=false;
-
   if(t.sheet){
     const img=G.imgs['ene_'+e.type];
     if(img){
@@ -1196,10 +1224,46 @@ function drawEnemy(ctx,e){
   } else if(t.frames){
     const f=((e.animT*6)|0)%t.nframes+1;
     const img=G.imgs[`ene_${e.type}_${f}`];
-    if(img){ const w=e.r*2.2*sm/ (e.scaleMul||1); ctx.drawImage(img,-e.r*1.3,-e.r*1.5,e.r*2.6,e.r*2.6); }
+    if(img){ ctx.drawImage(img,-e.r*1.3*sm,-e.r*1.5*sm,e.r*2.6*sm,e.r*2.6*sm); }
   }
-  if(flash){ ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=alpha*0.7; ctx.fillStyle='#fff';
-    ctx.beginPath();ctx.arc(0,-e.r*0.5,e.r,0,Math.PI*2);ctx.fill(); ctx.globalCompositeOperation='source-over'; }
+}
+
+function drawEnemy(ctx,e){
+  const t=e.def;
+  const flip = t.faceLeft? -1:1; // 素材默认朝左的怪, 翻转基准取反
+
+  // ---- 死亡消散: 压扁 + 淡出 + 微下沉, 不再残留圆圈 ----
+  if(!e.alive){
+    const k=clamp(e.deathT/DEATH_ANIM_DUR,0,1);
+    const alpha=1-k;
+    ctx.save();
+    ctx.globalAlpha=alpha;
+    ctx.translate(e.x, e.y + k*e.r*0.35);
+    ctx.scale(e.face*flip*(1+k*0.7), Math.max(0.05,(1-k*0.85)));
+    drawEnemySprite(ctx,e);
+    ctx.restore();
+    // 消散碎屑
+    if(k>0.15 && Math.random()<0.35)
+      G.particles.push({x:e.x+rand(-e.r,e.r), y:e.y-rand(0,e.r), vx:rand(-24,24), vy:rand(-60,-16), life:0.35, maxLife:0.35, color:'#cfc4e8', size:rand(2,4)});
+    return;
+  }
+
+  const alpha = e.aiState==='windup'? 0.7 : (t.ai==='stealth'? (1-(e.stealth||0)) : 1);
+  ctx.save();
+  ctx.globalAlpha=alpha;
+  drawShadow(ctx,e.x,e.y,e.r);
+  const flash=e.hitT>0;
+  ctx.translate(e.x,e.y);
+  // 出生弹出(回弹缩放)
+  let born=1; if(e.spawnT>0){ const tt=1-e.spawnT/0.35; born=tt<0.7? tt/0.7*1.15 : 1.15-(tt-0.7)/0.3*0.15; }
+  // 受击压扁回弹(暴击更明显)
+  let sq=1;
+  if(e.critT>0){ e.critT-=0.016; sq=1+Math.sin(e.critT/0.18*Math.PI)*0.25; }
+  else if(e.hitT>0){ sq=1+Math.sin(e.hitT/0.12*Math.PI)*0.12; }
+  ctx.scale(e.face*flip*sq*born, (1/sq)*born);
+  drawEnemySprite(ctx,e);
+  if(flash){ ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=alpha*0.55; ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(0,-e.r*0.5,e.r*0.8,0,Math.PI*2);ctx.fill(); ctx.globalCompositeOperation='source-over'; }
   ctx.restore();
 
   // 濒死红闪(<25%血, 越死闪越快)

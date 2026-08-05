@@ -18,12 +18,13 @@
       background:rgba(122,74,208,.28);border:2px solid rgba(176,108,224,.7);user-select:none;
       -webkit-user-select:none;touch-action:none;letter-spacing:0}
     .tbtn:active,.tbtn.on{background:rgba(255,211,77,.4);border-color:#ffd34d;transform:scale(.94)}
-    #tb-atk{right:26px;bottom:96px;width:96px;height:96px;font-size:19px}
     #tb-dash{right:140px;bottom:56px}
-    #tb-skill{right:56px;bottom:206px}
+    #tb-skill{right:26px;bottom:96px;width:96px;height:96px;font-size:19px}
     #tb-pause{right:20px;top:76px;width:52px;height:52px;font-size:14px}
     .tcool{position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(0,0,0,.65) var(--p,0%),transparent 0);pointer-events:none}
-    @media (max-width:820px){ .tbtn{width:66px;height:66px} #tb-atk{width:84px;height:84px;bottom:84px} #tb-skill{bottom:180px} }
+    #skill-cd-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      font-size:24px;color:#fff;text-shadow:0 0 8px #5cd4ff,0 2px 2px #000;pointer-events:none}
+    @media (max-width:820px){ .tbtn{width:66px;height:66px} #tb-skill{width:84px;height:84px;bottom:84px} }
   `;
   const st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
 
@@ -32,9 +33,8 @@
   ui.innerHTML=`
     <div class="tzone" id="stick-zone" style="left:0;bottom:0;width:46%;height:70%"></div>
     <div id="stick-base"><div id="stick-nub"></div></div>
-    <div class="tbtn" id="tb-atk">⚔️</div>
     <div class="tbtn" id="tb-dash">💨</div>
-    <div class="tbtn" id="tb-skill">✨<div class="tcool" id="skill-cool"></div></div>
+    <div class="tbtn" id="tb-skill">✨<div class="tcool" id="skill-cool"></div><span id="skill-cd-num"></span></div>
     <div class="tbtn" id="tb-pause">⏸</div>`;
   document.getElementById('wrap').appendChild(ui);
 
@@ -75,28 +75,23 @@
   };
   zone.addEventListener('touchend',endStick); zone.addEventListener('touchcancel',endStick);
 
-  // ---- 按钮: 攻击持续按住 ----
-  const atk=$('tb-atk');
-  atk.addEventListener('touchstart',e=>{e.preventDefault();atk.classList.add('on');keys[K.atk]=true;},{passive:false});
-  const atkEnd=e=>{e.preventDefault();atk.classList.remove('on');keys[K.atk]=false;};
-  atk.addEventListener('touchend',atkEnd); atk.addEventListener('touchcancel',atkEnd);
-
   // ---- 闪避 / 技能 (点按) ----
-  $('tb-dash').addEventListener('touchstart',e=>{e.preventDefault();keys[K.dash]=true;},{passive:false});
+  $('tb-dash').addEventListener('touchstart',e=>{e.preventDefault();keyHit[K.dash]=true;},{passive:false});
   $('tb-skill').addEventListener('touchstart',e=>{e.preventDefault();
     const p=G.players[0]; if(p&&p.skillCd<=0){$('tb-skill').classList.add('on');setTimeout(()=>$('tb-skill').classList.remove('on'),200);}
-    keys[K.skill]=true; },{passive:false});
+    keyHit[K.skill]=true; },{passive:false});
 
   // ---- 暂停 ----
   $('tb-pause').addEventListener('touchstart',e=>{e.preventDefault();togglePause();},{passive:false});
 
-  // ---- 触屏自动攻击: 持续按住攻击即可,引擎已锁定最近怪 ----
-  // 技能冷却可视化
+  // ---- 攻击全自动(引擎锁定最近怪), 触屏无需攻击键 ----
+  // 技能冷却可视化: 锥形遮罩 + 剩余秒数
   setInterval(()=>{
     const p=G.players&&G.players[0];
     if(!p) return;
-    const el=$('skill-cool');
+    const el=$('skill-cool'), num=$('skill-cd-num');
     if(el) el.style.setProperty('--p', (p.skillCd>0? (p.skillCd/p.skillMax*100):0)+'%');
+    if(num) num.textContent = p.skillCd>0? p.skillCd.toFixed(1):'';
   },80);
 
   // 阻止整页滚动/缩放

@@ -17,6 +17,11 @@ function drawHUD(ctx){
     if(p.weapon && WEAPONS[p.weapon]){ const w=WEAPONS[p.weapon];
       ctx.textAlign='left'; ctx.font='13px sans-serif'; ctx.fillStyle=w.color;
       ctx.fillText(w.icon+' '+w.name, x, y+48); ctx.textAlign='left'; }
+    // 专属技能名 + 冷却倒计时(秒)
+    if(p.def.skill){ const sk=p.def.skill; const cd=p.skillCd>0;
+      ctx.textAlign='left'; ctx.font='11px "Press Start 2P",monospace';
+      ctx.fillStyle=cd?'#8a7ab0':sk.color;
+      ctx.fillText('✦'+sk.name+(cd?' '+p.skillCd.toFixed(1)+'s':' 就绪'), x+120, y+48); }
   });
 
   // 波次 / 关卡
@@ -82,7 +87,7 @@ function drawHUD(ctx){
   // 操作提示(底部) — 触屏设备改显示简化提示
   ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='10px "Press Start 2P",monospace';
   if(G.isTouch){ ctx.fillText('左摇杆移动 · 自动攻击 · 💨闪避 · ✨技能', VIEW_W/2, VIEW_H-12); }
-  else { ctx.fillText('P1: WASD移动 C攻击(按住) F闪避 B技能   P2: 方向键 L攻击 I闪避 J技能   T自动战斗 Esc暂停 M静音', VIEW_W/2, VIEW_H-12); }
+  else { ctx.fillText('P1: WASD移动 C技能 F闪避   P2: 方向键 L技能 I闪避   攻击自动 T开关自动战斗 Esc暂停 M静音', VIEW_W/2, VIEW_H-12); }
 }
 
 // ---------- DOM UI ----------
@@ -170,8 +175,10 @@ function buildSelect(){
   for(const k in HERO_TYPES){
     const t=HERO_TYPES[k];
     const d=document.createElement('div'); d.className='hero-card'; d.dataset.hero=k;
-    const stars='★'.repeat(Math.round(t.hp/40))+'☆'.repeat(5-Math.round(t.hp/40));
-    d.innerHTML=`<div class="hero-name">${t.name}</div><div class="hero-desc">${t.desc}</div><div class="hero-hp">${stars}</div>`;
+    const stars='★'.repeat(Math.round(t.hp/48))+'☆'.repeat(5-Math.round(t.hp/48));
+    d.innerHTML=`<div class="hero-name">${t.name}</div><div class="hero-desc">${t.desc}</div>
+      <div class="hero-skill" style="font-size:9px;color:${t.skill.color};line-height:1.6;min-height:28px">✦${t.skill.name}<br><span style="color:#8a7ab0">${t.skill.desc}</span></div>
+      <div class="hero-hp">${stars}</div>`;
     d.onclick=()=>{ if(selection.includes(k)){selection=selection.filter(x=>x!==k);d.classList.remove('sel');}
       else if(selection.length<2){selection.push(k);d.classList.add('sel');}
       $('start-btn').textContent=selection.length?`开始战斗 (${selection.length}P)`:'选择角色'; };
@@ -200,21 +207,30 @@ function fitCanvas(){
 }
 
 // ---------- 输入 ----------
+// 部分环境(合成事件/移动端/IME)的 KeyboardEvent.code 为空, 用 e.key 兜底换算
+function keyAlias(e){
+  if(e.code) return e.code;
+  const k=e.key||'';
+  if(/^[a-zA-Z]$/.test(k)) return 'Key'+k.toUpperCase();
+  if(/^[0-9]$/.test(k)) return 'Digit'+k;
+  return k; // ArrowUp / Escape 等命名键与 code 一致
+}
 window.addEventListener('keydown',e=>{
-  keys[e.code]=true;
-  if(e.code==='Escape'){ togglePause(); }
-  if(e.code==='KeyM'){ G.muted=!G.muted; applyMute(); }
+  const kc=keyAlias(e);
+  keys[kc]=true; keyHit[kc]=true; // keyHit: 点按消费型(技能/闪避)
+  if(kc==='Escape'){ togglePause(); }
+  if(kc==='KeyM'){ G.muted=!G.muted; applyMute(); }
   if(G.state==='upgrade'){
-    if(e.code==='Digit1')applyUpgrade(0);
-    if(e.code==='Digit2')applyUpgrade(1);
-    if(e.code==='Digit3')applyUpgrade(2);
+    if(kc==='Digit1')applyUpgrade(0);
+    if(kc==='Digit2')applyUpgrade(1);
+    if(kc==='Digit3')applyUpgrade(2);
   }
-    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
-    if(G.state==='shop' && e.code==='Escape'){ closeShop(); $('pause').classList.add('hidden'); }
-    if(e.code==='KeyT'){ G.autoBattle=!G.autoBattle; for(const p of G.players) if(!p.ai)p.auto=G.autoBattle;
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(kc))e.preventDefault();
+    if(G.state==='shop' && kc==='Escape'){ closeShop(); $('pause').classList.add('hidden'); }
+    if(kc==='KeyT'){ G.autoBattle=!G.autoBattle; for(const p of G.players) if(!p.ai)p.auto=G.autoBattle;
       spawnFloater(WORLD_W/2,WORLD_H/2-100, G.autoBattle?'自动战斗: 开':'自动战斗: 关', G.autoBattle?'#7ee081':'#ff8a5c', 20); }
 });
-window.addEventListener('keyup',e=>{keys[e.code]=false;});
+window.addEventListener('keyup',e=>{keys[keyAlias(e)]=false;});
 
 function togglePause(){
   if(G.state==='play'||G.state==='intermission'){ G._preState=G.state; G.state='pause'; $('pause').classList.remove('hidden'); }
