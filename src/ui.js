@@ -29,9 +29,10 @@ function drawHUD(ctx){
   ctx.fillStyle='#8ab'; ctx.font='10px "Press Start 2P",monospace';
   ctx.fillText(`${G.fps}fps`, VIEW_W-20, 58);
 
-  // 操作提示(底部)
+  // 操作提示(底部) — 触屏设备改显示简化提示
   ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='10px "Press Start 2P",monospace';
-  ctx.fillText('P1: WASD移动 C攻击 F闪避 B技能      P2: 方向键 L攻击 I闪避 J技能      Esc暂停 M静音', VIEW_W/2, VIEW_H-12);
+  if(G.isTouch){ ctx.fillText('左摇杆移动 · ⚔️攻击 · 💨闪避 · ✨技能', VIEW_W/2, VIEW_H-12); }
+  else { ctx.fillText('P1: WASD移动 C攻击 F闪避 B技能      P2: 方向键 L攻击 I闪避 J技能      Esc暂停 M静音', VIEW_W/2, VIEW_H-12); }
 }
 
 // ---------- DOM UI ----------
