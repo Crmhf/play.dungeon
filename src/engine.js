@@ -53,6 +53,21 @@ const ENEMY_TYPES = {
   vampire:  { frames:'assets/sprites/enemies/2dpd/vampire/v1/vampire_v1_%d.png', nframes:4, ai:'charge', hp:80, spd:95, dmg:18, gold:12, scale:2.6 },
 };
 
+// 精英词缀(第13波起出现, 丰富中后期体验): 狂暴=高速高伤 / 巨化=高血大型 / 迅捷=极速
+const ELITE_AFFIXES = {
+  frenzy: { name:'狂暴', color:'#ff3b3b', apply:e=>{ e.spd*=1.6; e.dmg*=1.3; e.touchCdMul=0.6; } },
+  giant:  { name:'巨化', color:'#c06ce0', apply:e=>{ e.maxHp*=2.2; e.hp=e.maxHp; e.r*=1.35; e.dmg*=1.3; e.spd*=0.8; e.mass*=2; } },
+  swift:  { name:'迅捷', color:'#5cd4ff', apply:e=>{ e.spd*=2.0; } },
+};
+function maybeElite(e){
+  if(G.wave<13 || Math.random()>=0.12) return; // 12% 概率
+  const keys=Object.keys(ELITE_AFFIXES);
+  const k=keys[irand(0,keys.length-1)];
+  ELITE_AFFIXES[k].apply(e);
+  e.affix=k; e.gold*=3; // 精英3倍金币
+  spawnFloater(e.x, e.y-e.r-12, ELITE_AFFIXES[k].name+'!', ELITE_AFFIXES[k].color, 15);
+}
+
 // 英雄定义: 取自 Dungeon_Character.png (16px 网格) 与 priest 逐帧
 // 平衡设计: 近战贴脸冒险换最高伤害(盗贼78/骑士52 DPS), 远程用伤害换安全与功能(弓手36/法师32 DPS)
 // passive: 英雄专属天生被动 — 骑士减伤 / 弓手鹰眼暴击 / 法师技能急速 / 刺客高暴击
@@ -495,9 +510,24 @@ function killEnemy(e, source){
   // 连击
   G.combo++; G.comboT=3; G.comboBest=Math.max(G.comboBest,G.combo);
   G.comboMul=1+Math.min(0.5, G.combo*0.02); // 每连击+2%伤害,上限50%
-  // 连击里程碑(10/25/50): 音高上扬提示
-  if(G.combo===10||G.combo===25||G.combo===50){ playSfx('magic',0.7, 1+G.combo*0.01); screenFlash('#ffd34d',0.2);
+  // 连击里程碑(10/25): 音高上扬提示
+  if(G.combo===10||G.combo===25){ playSfx('magic',0.7, 1+G.combo*0.01); screenFlash('#ffd34d',0.2);
     spawnFloater(e.x, e.y-70, G.combo+' 连击!', '#ffd34d', 30); }
+  // 史诗连击(50/100): 全屏奖励演出 + 实利奖励
+  if(G.combo===50||G.combo===100){
+    const epic=G.combo===100;
+    playSfx('explode',1, epic?1.3:1.1); screenFlash('#ffd34d',0.6); addShake(12,0.4);
+    G.timeScale=0.3; G.timeScaleT=0.7; // 慢镜头演出
+    spawnFloater(e.x, e.y-80, '🔥 '+G.combo+' 连击·无双! 🔥', '#ffd34d', epic?44:38);
+    // 全屏金色冲击波+金雨粒子
+    G.particles.push({shock:true,x:e.x,y:e.y,r:10,maxR:epic?900:600,life:0.5,maxLife:0.5,color:'#ffd34d'});
+    for(let i=0;i<(epic?40:24);i++) spawnParticles(rand(0,WORLD_W),rand(0,WORLD_H),'#ffd34d',1,140,0.8,4);
+    // 实利: 50连=每人+50金; 100连=每人+120金+回血25%
+    for(const p of G.players){ if(!p.alive) continue;
+      p.gold=(p.gold||0)+(epic?120:50);
+      if(epic){ p.hp=Math.min(p.maxHp, p.hp+p.maxHp*0.25); spawnFloater(p.x,p.y-30,'+25%❤','#7ee081',18); }
+    }
+  }
   playSfx('hit',0.5);
   spawnParticles(e.x,e.y,'#ffffff',e.isBoss?30:10,e.isBoss?240:140,0.5,4);
   spawnParticles(e.x,e.y,'#8a2a3a',e.isBoss?20:8,120,0.5,4);
@@ -610,7 +640,7 @@ function updateEnemy(e, dt){
 
   // 接触伤害
   if(e.touchCd<=0 && d < e.r+p.r-4 && p.invuln<=0){
-    hurtPlayer(p, e.dmg, e); e.touchCd=0.8;
+    hurtPlayer(p, e.dmg, e); e.touchCd=0.8*(e.touchCdMul||1); // 狂暴精英攻击更频繁
   }
 }
 
@@ -762,7 +792,9 @@ function spawnFromQueue(dt){
       const side=irand(0,3); let x,y;
       if(side===0){x=rand(60,WORLD_W-60);y=60;} else if(side===1){x=rand(60,WORLD_W-60);y=WORLD_H-60;}
       else if(side===2){x=60;y=rand(60,WORLD_H-60);} else {x=WORLD_W-60;y=rand(60,WORLD_H-60);}
-      G.enemies.push(makeEnemy(s.type,x,y,s.hpMul,s.dmgMul||1));
+      const e=makeEnemy(s.type,x,y,s.hpMul,s.dmgMul||1);
+      maybeElite(e); // 13波起概率附带精英词缀
+      G.enemies.push(e);
       spawnParticles(x,y,'#9a4ab0',6,80,0.4,3);
     }
   }
@@ -884,6 +916,8 @@ const META_UPGRADES={
   spd:   { name:'永久移速', icon:'💨', desc:'每级 +3% 移动速度', max:8,  base:45, mul:1.5 },
   gold:  { name:'黄金猎手', icon:'💰', desc:'每级 +8% 金币获取', max:8,  base:45, mul:1.5 },
   revive:{ name:'备用复活', icon:'✚',  desc:'每级开局 +1 复活币', max:3, base:90, mul:2 },
+  startgear:  { name:'出征装备', icon:'🎒', desc:'开局随机穿戴 1 件装备', max:1, base:150, mul:1 },
+  startweapon:{ name:'出征神兵', icon:'⚜️', desc:'开局随机持 1 把精良武器', max:1, base:200, mul:1 },
 };
 function metaCost(k){ const m=META_UPGRADES[k]; const lv=G.meta.upg[k]||0; return Math.round(m.base*Math.pow(m.mul,lv)); }
 function loadMeta(){
@@ -915,6 +949,9 @@ function applyMetaToPlayer(p){
   if(u.spd) p.spd*=1+u.spd*0.03;
   if(u.gold) p.goldMul=1+u.gold*0.08;
   if(u.revive) p.reviveCoins=(p.reviveCoins||0)+u.revive;
+  // 出征装备/神兵: 开局自带
+  if(u.startgear) setGear(p, GEAR_SELLABLE[irand(0,GEAR_SELLABLE.length-1)]);
+  if(u.startweapon) setWeapon(p, SHOP_SELLABLE[irand(0,SHOP_SELLABLE.length-1)]);
 }
 
 // ---------- 游戏流程 ----------
@@ -1364,6 +1401,14 @@ function drawEnemy(ctx,e){
   ctx.save();
   ctx.globalAlpha=alpha;
   drawShadow(ctx,e.x,e.y,e.r);
+  // 精英词缀光环(脉冲色环)
+  if(e.affix){ const ac=ELITE_AFFIXES[e.affix].color;
+    ctx.save(); ctx.globalAlpha=0.55+Math.sin(G.time*8)*0.2;
+    ctx.strokeStyle=ac; ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(e.x,e.y-e.r*0.3,e.r*1.25,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=0.15; ctx.fillStyle=ac;
+    ctx.beginPath();ctx.arc(e.x,e.y-e.r*0.3,e.r*1.25,0,Math.PI*2);ctx.fill();
+    ctx.restore(); }
   const flash=e.hitT>0;
   ctx.translate(e.x,e.y);
   // 出生弹出(回弹缩放)
