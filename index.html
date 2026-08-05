@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>地牢双雄 · DUNGEON DUO — 双人合作 Roguelike</title>
+<meta name="description" content="两个老友在暗黑地牢里一直砍怪,每波结束变强一点,扛到最后就是胜利。俯视同屏双人合作生存 Roguelike,万圣节像素风。">
+<meta name="theme-color" content="#1a0f2e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root{ --pu:#7a4ad0; --pu2:#b06ce0; --gold:#ffd34d; --ink:#0a0612; --grn:#7ee081; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#050308}
+  body{font-family:"Press Start 2P",monospace;color:#e8e0f5;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 40%, #1a0f2e 0%, #050308 70%);user-select:none}
+  #wrap{position:relative}
+  canvas{display:block;background:#0a0612;box-shadow:0 0 80px rgba(122,74,208,.35);image-rendering:pixelated}
+  .hidden{display:none!important}
+
+  /* ---------- 全屏遮罩层 ---------- */
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(8,4,16,.88);backdrop-filter:blur(4px);z-index:10;text-align:center}
+  .title{font-size:44px;letter-spacing:4px;color:var(--gold);text-shadow:0 0 20px var(--pu),4px 4px 0 #2a1060;margin-bottom:8px}
+  .subtitle{font-size:13px;color:var(--pu2);margin-bottom:36px;letter-spacing:2px}
+  .btn{font-family:inherit;font-size:16px;padding:16px 34px;margin:8px;cursor:pointer;color:#fff;
+    background:linear-gradient(180deg,#7a4ad0,#4a2a90);border:3px solid #b06ce0;border-radius:6px;
+    box-shadow:0 4px 0 #2a1060,0 0 24px rgba(122,74,208,.5);transition:transform .08s;letter-spacing:2px}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 6px 0 #2a1060,0 0 34px rgba(176,108,224,.8)}
+  .btn:active{transform:translateY(2px);box-shadow:0 2px 0 #2a1060}
+  .btn.ghost{background:#241640;border-color:#5a3a90}
+  .btn.on{outline:3px solid var(--gold)}
+
+  /* ---------- 加载 ---------- */
+  #load-bar{width:340px;height:18px;border:2px solid var(--pu);border-radius:9px;overflow:hidden;margin-top:24px;background:#150b28}
+  #load-fill{height:100%;width:0;background:linear-gradient(90deg,var(--pu),var(--pu2));transition:width .2s}
+  #load-txt{margin-top:14px;font-size:11px;color:var(--pu2)}
+
+  /* ---------- 菜单 logo ---------- */
+  #menu-logo{width:130px;height:130px;image-rendering:pixelated;margin-bottom:18px;filter:drop-shadow(0 0 18px rgba(176,108,224,.7))}
+  .menu-hint{margin-top:30px;font-size:10px;color:#8a7ab0;line-height:2}
+
+  /* ---------- 角色选择 ---------- */
+  #hero-cards{display:flex;gap:18px;margin:26px 0}
+  .hero-card{width:150px;padding:20px 12px;background:#1c1032;border:3px solid #4a2a90;border-radius:10px;cursor:pointer;transition:all .12s}
+  .hero-card:hover{transform:translateY(-4px);border-color:var(--pu2)}
+  .hero-card.sel{border-color:var(--gold);box-shadow:0 0 24px rgba(255,211,77,.5);background:#2a1a48}
+  .hero-name{font-size:18px;color:#fff;margin-bottom:10px}
+  .hero-desc{font-size:9px;color:#b0a0d0;line-height:1.7;height:42px}
+  .hero-hp{font-size:11px;color:var(--grn);margin-top:8px}
+  .mode-row{display:flex;gap:10px;margin-bottom:8px}
+
+  /* ---------- 升级 ---------- */
+  #upgrade-cards{display:flex;gap:22px;margin-top:30px}
+  .up-card{width:210px;padding:30px 18px;background:linear-gradient(180deg,#2a1a48,#180d2e);border:3px solid var(--pu);
+    border-radius:12px;cursor:pointer;transition:all .12s}
+  .up-card:hover{transform:translateY(-6px) scale(1.04);border-color:var(--gold);box-shadow:0 0 34px rgba(255,211,77,.5)}
+  .up-icon{font-size:44px;margin-bottom:16px}
+  .up-name{font-size:13px;color:#fff;line-height:1.8;min-height:48px}
+  .up-key{margin-top:14px;font-size:10px;color:var(--gold)}
+  .up-title{font-size:30px;color:var(--gold);text-shadow:0 0 16px var(--pu)}
+  #up-timer{color:#ff8a5c;font-size:18px;margin-top:14px}
+
+  /* ---------- 结束 ---------- */
+  .big{font-size:52px;margin-bottom:20px;letter-spacing:4px}
+  #gameover .big{color:#ff5c5c;text-shadow:0 0 24px #a00}
+  #victory .big{color:var(--gold);text-shadow:0 0 24px #fa0}
+  .stats{font-size:14px;line-height:2.4;color:#c8bce0;margin-bottom:26px}
+  .stats b{color:var(--gold)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <!-- 加载 -->
+  <div id="loading" class="overlay">
+    <div class="title">地牢双雄</div>
+    <div class="subtitle">DUNGEON DUO · 加载中…</div>
+    <div id="load-bar"><div id="load-fill"></div></div>
+    <div id="load-txt">正在召唤像素地牢…</div>
+  </div>
+
+  <!-- 主菜单 -->
+  <div id="menu" class="overlay hidden">
+    <img id="menu-logo" src="assets/img/ui/logo.png" alt="" onerror="this.style.display='none'">
+    <div class="title">地牢双雄</div>
+    <div class="subtitle">双 人 合 作 · 肉 鸽 生 存</div>
+    <button class="btn" id="to-select">进 入 地 牢</button>
+    <div class="menu-hint">P1: WASD 移动 · C 攻击 · F 闪避 · B 技能<br>P2: 方向键 · L 攻击 · I 闪避 · J 技能<br>Esc 暂停 · M 静音</div>
+  </div>
+
+  <!-- 角色选择 -->
+  <div id="select" class="overlay hidden">
+    <div class="up-title">选择你的英雄</div>
+    <div class="subtitle">选 1 个单人 / 选 2 个双人同屏</div>
+    <div class="mode-row">
+      <button class="btn ghost on" id="mode1">单人</button>
+      <button class="btn ghost" id="mode2">双人同屏</button>
+    </div>
+    <div id="hero-cards"></div>
+    <button class="btn" id="start-btn">选择角色</button>
+  </div>
+
+  <!-- 升级 -->
+  <div id="upgrade" class="overlay hidden">
+    <div class="up-title">⚡ 升级!三选一 ⚡</div>
+    <div id="up-timer">15s</div>
+    <div id="upgrade-cards"></div>
+  </div>
+
+  <!-- 暂停 -->
+  <div id="pause" class="overlay hidden">
+    <div class="big" style="color:var(--pu2)">已暂停</div>
+    <button class="btn" id="resume-btn">继 续</button>
+  </div>
+
+  <!-- 失败 -->
+  <div id="gameover" class="overlay hidden">
+    <div class="big">全军覆没</div>
+    <div class="stats" id="over-stats"></div>
+    <button class="btn" id="retry-btn">再 来 一 局</button>
+  </div>
+
+  <!-- 胜利 -->
+  <div id="victory" class="overlay hidden">
+    <div class="big">🏆 通关地牢 🏆</div>
+    <div class="stats" id="win-stats"></div>
+    <button class="btn" id="win-retry-btn">再 战 一 局</button>
+  </div>
+</div>
+
+<script src="src/engine.js"></script>
+<script src="src/ui.js"></script>
+</body>
+</html>
