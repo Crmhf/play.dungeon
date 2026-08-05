@@ -53,17 +53,18 @@ const ENEMY_TYPES = {
 };
 
 // 英雄定义: 取自 Dungeon_Character.png (16px 网格) 与 priest 逐帧
-// 平衡设计: 近战血厚/技能偏防守反击, 远程血薄/技能偏爆发, CD 与威力成正比
+// 平衡设计: 近战贴脸冒险换最高伤害(盗贼78/骑士52 DPS), 远程用伤害换安全与功能(弓手36/法师32 DPS)
+//           近战血厚(骑士240), 远程血薄(法师100); 技能CD与威力、覆盖率匹配定位
 // skill: { name 技能名 / cd 冷却 / color 特效色 / desc 描述 }
 const HERO_TYPES = {
-  knight: { name:'骑士', desc:'近战肉盾 · 砍一片', sheet:'chars', col:0, row:0, hp:240, spd:150, atk:23, rate:0.50, range:70,  arc:true,  projSpeed:0,   color:'#c8d0e0', sfx:'sword',
+  knight: { name:'骑士', desc:'近战肉盾 · 横扫一片', sheet:'chars', col:0, row:0, hp:240, spd:150, atk:26, rate:0.50, range:70,  arc:true,  projSpeed:0,   color:'#c8d0e0', sfx:'sword',
     skill:{ name:'旋风斩', cd:7, color:'#9adcff', desc:'横扫+减速敌人+3秒减伤50%' } },
-  archer: { name:'弓手', desc:'远程 · 穿透箭',     sheet:'chars', col:6, row:3, hp:115, spd:165, atk:15, rate:0.32, range:420, arc:false, projSpeed:520, pierce:true, color:'#a8e063', sfx:'bow',
+  archer: { name:'弓手', desc:'远程安全输出 · 穿透箭', sheet:'chars', col:6, row:3, hp:115, spd:165, atk:13, rate:0.36, range:420, arc:false, projSpeed:520, pierce:true, color:'#a8e063', sfx:'bow',
     skill:{ name:'天降箭雨', cd:9, color:'#a8e063', desc:'目标区域倾泻24支落箭' } },
-  mage:   { name:'法师', desc:'中距 AOE · 弹射魔法', sheet:'priest', variant:1, hp:100, spd:140, atk:19, rate:0.50, range:380, arc:false, projSpeed:420, bounce:2, aoe:60, color:'#b06ce0', sfx:'magic',
+  mage:   { name:'法师', desc:'中距AOE · 弹射灼烧', sheet:'priest', variant:1, hp:100, spd:140, atk:16, rate:0.50, range:380, arc:false, projSpeed:420, bounce:2, aoe:60, color:'#b06ce0', sfx:'magic',
     skill:{ name:'奥术湮灭', cd:12, color:'#e08cff', desc:'大爆炸+灼烧3秒,毁天灭地' } },
-  rogue:  { name:'盗贼', desc:'极快高闪 · 双刀',   sheet:'chars', col:0, row:1, hp:115, spd:195, atk:13, rate:0.18, range:64,  arc:true,  projSpeed:0,   dodgeCd:1.3, color:'#e0b25c', sfx:'swing',
-    skill:{ name:'暗影突袭', cd:6, color:'#e0b25c', desc:'隐身必暴+加速,重置闪避' } },
+  rogue:  { name:'盗贼', desc:'近战爆发 · 刀刀烈火', sheet:'chars', col:0, row:1, hp:115, spd:195, atk:14, rate:0.18, range:64,  arc:true,  projSpeed:0,   dodgeCd:1.3, color:'#e0b25c', sfx:'swing',
+    skill:{ name:'暗影突袭', cd:7, color:'#e0b25c', desc:'隐身必暴+加速,重置闪避' } },
 };
 
 // 关卡主题
@@ -81,9 +82,9 @@ const WEAPONS = {
   pumpkin:  { name:'南瓜锤',   icon:'🎃', cls:'melee',  dmgMul:1.8, rateMul:1.6,  rangeMul:1.3, knockback:320, aoeWave:true, color:'#ff9540', sfx:'heavy', desc:'重锤!大范围击退+冲击波' },
   bonescythe:{name:'幽灵镰刀', icon:'💀', cls:'melee',  dmgMul:1.3, rateMul:0.85, rangeMul:1.5, lifesteal:0.08, color:'#b06ce0', sfx:'swing', desc:'吸血镰刀,大范围收割' },
   bow:      { name:'短弓',     icon:'🏹', cls:'ranged', dmgMul:1.0, rateMul:1.0,  rangeMul:1.0, color:'#a8e063', sfx:'bow', desc:'均衡的初始弓' },
-  crossbow: { name:'连弩',     icon:'⚙️', cls:'ranged', dmgMul:0.8, rateMul:0.6,  rangeMul:1.1, shots:2, color:'#ffd34d', sfx:'bow', desc:'双发连弩,射速极快' },
-  firestaff:{ name:'火焰法杖', icon:'🔥', cls:'ranged', dmgMul:1.4, rateMul:1.1,  rangeMul:1.0, elem:'fire', aoe:50, color:'#ff5c2a', sfx:'magic', desc:'火焰弹,命中爆炸溅射' },
-  froststaff:{name:'寒霜法杖', icon:'❄️', cls:'ranged', dmgMul:1.1, rateMul:0.9,  rangeMul:1.2, elem:'frost', slow:0.5, color:'#5cd4ff', sfx:'magic', desc:'寒霜弹,减速敌人' },
+  crossbow: { name:'连弩',     icon:'⚙️', cls:'ranged', dmgMul:0.45, rateMul:0.7, rangeMul:1.1, shots:2, color:'#ffd34d', sfx:'bow', desc:'双发连弩,射速极快(单箭伤害低)' },
+  firestaff:{ name:'火焰法杖', icon:'🔥', cls:'ranged', dmgMul:1.25, rateMul:1.1, rangeMul:1.0, elem:'fire', aoe:50, color:'#ff5c2a', sfx:'magic', desc:'火焰弹,命中爆炸溅射' },
+  froststaff:{name:'寒霜法杖', icon:'❄️', cls:'ranged', dmgMul:1.0, rateMul:0.9,  rangeMul:1.2, elem:'frost', slow:0.5, color:'#5cd4ff', sfx:'magic', desc:'寒霜弹,减速敌人(功能向)' },
   dagger:   { name:'淬毒双刃', icon:'🔪', cls:'melee',  dmgMul:1.0, rateMul:0.6,  rangeMul:0.9, elem:'poison', poison:6, color:'#8ee05c', sfx:'swing', desc:'剧毒双刃,持续掉血' },
 };
 
