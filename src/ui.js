@@ -25,6 +25,20 @@ function drawHUD(ctx){
   ctx.fillStyle=LEVEL_DEFS[G.level].tint; ctx.font='11px "Press Start 2P",monospace';
   ctx.fillText(LEVEL_DEFS[G.level].name, VIEW_W/2, 48);
 
+  // Boss 大血条(有存活Boss时)
+  const boss=G.enemies.find(e=>e.isBoss&&e.alive);
+  if(boss){
+    const bw=560, bx=VIEW_W/2-bw/2, by=72;
+    ctx.textAlign='center'; ctx.fillStyle='#ff5c5c'; ctx.font='bold 13px "Press Start 2P",monospace';
+    ctx.fillText(boss.pumpkinKing?'🎃 南 瓜 王':'👹 BOSS', VIEW_W/2, by-6);
+    ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(bx-3,by-3,bw+6,18);
+    const frac=clamp(boss.hp/boss.maxHp,0,1);
+    const grad=ctx.createLinearGradient(bx,0,bx+bw,0);
+    grad.addColorStop(0,'#ff2a2a'); grad.addColorStop(1,'#ff8a5c');
+    ctx.fillStyle=grad; ctx.fillRect(bx,by,bw*frac,12);
+    ctx.strokeStyle='#ffd34d'; ctx.lineWidth=2; ctx.strokeRect(bx-3,by-3,bw+6,18);
+  }
+
   // 金币 / 击杀
   ctx.textAlign='right'; ctx.fillStyle='#ffd34d'; ctx.font='bold 14px "Press Start 2P",monospace';
   if(G.imgs.coin) ctx.drawImage(G.imgs.coin, VIEW_W-220, 16, 22,22);
