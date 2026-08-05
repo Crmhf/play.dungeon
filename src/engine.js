@@ -57,16 +57,16 @@ const ENEMY_TYPES = {
 // 平衡设计: 近战贴脸冒险换最高伤害(盗贼78/骑士52 DPS), 远程用伤害换安全与功能(弓手36/法师32 DPS)
 // passive: 英雄专属天生被动 — 骑士减伤 / 弓手鹰眼暴击 / 法师技能急速 / 刺客高暴击
 const HERO_TYPES = {
-  knight: { name:'骑士', desc:'近战肉盾 · 横扫一片', sheet:'chars', col:0, row:0, hp:240, spd:150, atk:26, rate:0.50, range:70,  arc:true,  projSpeed:0,   color:'#c8d0e0', sfx:'sword',
+  knight: { name:'骑士', desc:'近战肉盾 · 横扫一片', sheet:'chars', col:0, row:0, hp:240, spd:150, atk:26, rate:0.50, range:70,  arc:true,  projSpeed:0,   dash:1.5, color:'#c8d0e0', sfx:'sword',
     passive:{ key:'damageReduce', val:0.15, name:'圣盾体质', desc:'受伤减免15%' },
     skill:{ name:'旋风斩', cd:7, color:'#9adcff', desc:'横扫+减速敌人+3秒减伤50%' } },
-  archer: { name:'弓手', desc:'远程安全输出 · 穿透箭', sheet:'chars', col:6, row:3, hp:115, spd:165, atk:13, rate:0.36, range:420, arc:false, projSpeed:520, pierce:true, color:'#a8e063', sfx:'bow',
+  archer: { name:'弓手', desc:'远程安全输出 · 穿透箭', sheet:'chars', col:6, row:3, hp:115, spd:165, atk:13, rate:0.36, range:420, arc:false, projSpeed:520, pierce:true, dash:1.0, color:'#a8e063', sfx:'bow',
     passive:{ key:'critChance', val:0.18, name:'鹰眼', desc:'天生暴击率18%' },
     skill:{ name:'天降箭雨', cd:9, color:'#a8e063', desc:'目标区域倾泻24支落箭' } },
-  mage:   { name:'法师', desc:'中距AOE · 弹射灼烧', sheet:'priest', variant:1, hp:100, spd:140, atk:16, rate:0.50, range:380, arc:false, projSpeed:420, bounce:2, aoe:60, color:'#b06ce0', sfx:'magic',
+  mage:   { name:'法师', desc:'中距AOE · 弹射灼烧', sheet:'priest', variant:1, hp:100, spd:140, atk:16, rate:0.50, range:380, arc:false, projSpeed:420, bounce:2, aoe:60, dash:0.9, color:'#b06ce0', sfx:'magic',
     passive:{ key:'skillCdMul', val:0.8, name:'奥术亲和', desc:'技能冷却-20%' },
     skill:{ name:'奥术湮灭', cd:12, color:'#e08cff', desc:'大爆炸+灼烧3秒,毁天灭地' } },
-  rogue:  { name:'盗贼', desc:'近战爆发 · 刀刀烈火', sheet:'chars', col:0, row:1, hp:115, spd:195, atk:14, rate:0.18, range:64,  arc:true,  projSpeed:0,   dodgeCd:1.3, color:'#e0b25c', sfx:'swing',
+  rogue:  { name:'盗贼', desc:'近战爆发 · 刀刀烈火', sheet:'chars', col:0, row:1, hp:115, spd:195, atk:14, rate:0.18, range:64,  arc:true,  projSpeed:0,   dodgeCd:1.3, dash:1.3, color:'#e0b25c', sfx:'swing',
     passive:{ key:'critChance', val:0.22, name:'刺客直觉', desc:'天生暴击率22%' },
     skill:{ name:'暗影突袭', cd:7, color:'#e0b25c', desc:'隐身必暴+加速,重置闪避' } },
 };
@@ -1025,7 +1025,8 @@ function updatePlayer(p,dt){
 
   if(p.dashing>0){
     p.dashing-=dt;
-    p.vx=p.dashDx*p.spd*3.2*p.dashMul; p.vy=p.dashDy*p.spd*3.2*p.dashMul;
+    const dashSpd=p.spd*3.2*p.dashMul*(p.def.dash||1); // 近战闪避距离更远(骑士1.5x/盗贼1.3x)
+    p.vx=p.dashDx*dashSpd; p.vy=p.dashDy*dashSpd;
     // 冲刺残影
     p._ghostT=(p._ghostT||0)-dt;
     if(p._ghostT<=0){ p._ghostT=0.03; G.dashGhosts.push({x:p.x,y:p.y,face:p.face,color:p.color,life:0.25,maxLife:0.25,def:p.def,heroKey:p.heroKey}); }
@@ -1089,7 +1090,13 @@ function updateAIPlayer(p,dt){
       if(d>90){ const a=angleTo(p.x,p.y,leader.x,leader.y); mx=Math.cos(a); my=Math.sin(a); } }
   }
   const l=Math.hypot(mx,my); if(l>0){mx/=l;my/=l;}
-  p.vx=mx*p.spd; p.vy=my*p.spd;
+  if(p.dashing>0){ // AI 闪避位移(与玩家一致, 近战更远)
+    p.dashing-=dt;
+    const dashSpd=p.spd*3.2*p.dashMul*(p.def.dash||1);
+    p.vx=p.dashDx*dashSpd; p.vy=p.dashDy*dashSpd;
+  } else {
+    p.vx=mx*p.spd; p.vy=my*p.spd;
+  }
   p.x=clamp(p.x+p.vx*dt,30,WORLD_W-30);
   p.y=clamp(p.y+p.vy*dt,30,WORLD_H-30);  if(l>0){
     p.walkT+=dt; p.state='run';
