@@ -232,7 +232,9 @@ function buildSelect(){
     const t=HERO_TYPES[k];
     const d=document.createElement('div'); d.className='hero-card'; d.dataset.hero=k;
     const stars='★'.repeat(Math.round(t.hp/48))+'☆'.repeat(5-Math.round(t.hp/48));
-    d.innerHTML=`<div class="hero-name">${t.name}</div><div class="hero-desc">${t.desc}</div>
+    d.innerHTML=`<img class="hero-avatar" src="assets/img/ui/hero-${k}.jpg" alt="${t.name}"
+        style="width:100%;border-radius:6px;margin-bottom:10px;image-rendering:auto;border:2px solid ${t.color}55">
+      <div class="hero-name">${t.name}</div><div class="hero-desc">${t.desc}</div>
       <div class="hero-skill" style="font-size:9px;color:${t.skill.color};line-height:1.6;min-height:28px">✦${t.skill.name}<br><span style="color:#8a7ab0">${t.skill.desc}</span></div>
       <div class="hero-passive" style="font-size:8px;color:#ffd34d;line-height:1.5;min-height:22px">◆${t.passive.name}<br><span style="color:#8a7ab0">${t.passive.desc}</span></div>
       <div class="hero-hp">${stars}</div>`;

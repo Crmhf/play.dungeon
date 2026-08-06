@@ -49,6 +49,11 @@ const ENEMY_TYPES = {
   plant:    { dir:'Plant',    sheet:'Attack (44x42).png',   fw:44, fh:42, ai:'ranged', hp:50, spd:0,   dmg:10, gold:6, scale:2.2, proj:'seed', faceLeft:true },
   chameleon:{ dir:'Chameleon',sheet:'Run (84x38).png',      fw:84, fh:38, ai:'stealth',hp:48, spd:90,  dmg:13, gold:8, scale:2.0 },
   turtle:   { dir:'Turtle',   sheet:'Spikes out (44x26).png',fw:44, fh:26, ai:'chase',  hp:95, spd:45,  dmg:14, gold:9, scale:2.4 }, // 尖刺龟: 高血坦克前排
+  bluebird: { dir:'BlueBird', sheet:'Flying (32x32).png',   fw:32, fh:32, ai:'chase',  hp:16, spd:130, dmg:6,  gold:3, scale:2.2, fly:true, faceLeft:true }, // 蓝鸟: 极速骚扰
+  duck:     { dir:'Duck',     sheet:'Idle (36x36).png',     fw:36, fh:36, ai:'chase',  hp:30, spd:75,  dmg:8,  gold:4, scale:2.2, faceLeft:true }, // 鸭子: 中速中血
+  fatbird:  { dir:'FatBird',  sheet:'Idle (40x48).png',     fw:40, fh:48, ai:'elite',  hp:50, spd:55,  dmg:12, gold:6, scale:2.4 }, // 胖鸟: 围猎精英
+  radish:   { dir:'Radish',   sheet:'Run (30x38).png',      fw:30, fh:38, ai:'chase',  hp:24, spd:85,  dmg:7,  gold:4, scale:2.2 }, // 萝卜头: 群冲
+  rocks:    { dir:'Rocks',    sheet:'Rock1_Run (38x34).png',fw:38, fh:34, ai:'charge', hp:60, spd:65,  dmg:13, gold:7, scale:2.4 }, // 石头怪: 滚动冲锋
   skeleton: { frames:'assets/sprites/enemies/2dpd/skeleton1/v1/skeleton_v1_%d.png', nframes:4, ai:'summoner', hp:60, spd:60, dmg:12, gold:9, scale:2.6 },
   vampire:  { frames:'assets/sprites/enemies/2dpd/vampire/v1/vampire_v1_%d.png', nframes:4, ai:'charge', hp:80, spd:95, dmg:18, gold:12, scale:2.6 },
 };
@@ -88,11 +93,11 @@ const HERO_TYPES = {
 
 // 关卡主题
 const LEVEL_DEFS = [
-  { name:'暗黑地牢', tint:'#6a4a9a', fog:'rgba(40,20,70,0.35)', pool:['slime','bat','chicken'] },
-  { name:'阴森墓地', tint:'#3a6a4a', fog:'rgba(15,50,30,0.35)', pool:['slime','bat','chicken','bunny','angrypig','turtle'] },
-  { name:'沙石古堡', tint:'#b06a3a', fog:'rgba(90,45,15,0.32)', pool:['angrypig','skull','snail','mushroom','bunny','turtle'] },
-  { name:'火焰深渊', tint:'#c04a20', fog:'rgba(90,20,5,0.35)',  pool:['skull','rino','bee','trunk','plant','turtle'] },
-  { name:'万圣夜宴', tint:'#9a4ab0', fog:'rgba(60,15,80,0.35)', pool:['vampire','chameleon','ghost','skeleton','trunk','bee','turtle'] },
+  { name:'暗黑地牢', tint:'#6a4a9a', fog:'rgba(40,20,70,0.35)', pool:['slime','bat','chicken','radish'] },
+  { name:'阴森墓地', tint:'#3a6a4a', fog:'rgba(15,50,30,0.35)', pool:['slime','bat','chicken','bunny','angrypig','turtle','bluebird','duck'] },
+  { name:'沙石古堡', tint:'#b06a3a', fog:'rgba(90,45,15,0.32)', pool:['angrypig','skull','snail','mushroom','bunny','turtle','duck','fatbird','rocks'] },
+  { name:'火焰深渊', tint:'#c04a20', fog:'rgba(90,20,5,0.35)',  pool:['skull','rino','bee','trunk','plant','turtle','fatbird','rocks','bluebird'] },
+  { name:'万圣夜宴', tint:'#9a4ab0', fog:'rgba(60,15,80,0.35)', pool:['vampire','chameleon','ghost','skeleton','trunk','bee','turtle','radish','fatbird'] },
 ];
 
 // 武器定义: 改变攻击手感(伤害/攻速/范围/特效/元素)
@@ -478,6 +483,11 @@ function damageEnemy(e, dmg, source, opts){
   const col = opts.color || (crit?'#ff4d4d':(opts.elem==='fire'?'#ff9540':opts.elem==='thunder'?'#ffe95c':opts.elem==='poison'?'#8ee05c':'#ffd34d'));
   spawnFloater(e.x+rand(-6,6), e.y-e.r-6, Math.round(dmg)+(crit?'!':''), col, crit?(e.isBoss?30:22):(e.isBoss?22:15));
   spawnParticles(e.x, e.y, crit?'#ff4d4d':'#ff6a5c', crit?8:4, 90, 0.3, 3);
+  // 打击动效: 命中星芒 + 沿攻击方向的白色火花
+  G.particles.push({star:true,x:e.x,y:e.y-e.r*0.3,vx:0,vy:0,life:0.12,maxLife:0.12,color:crit?'#ffd34d':'#fff',size:crit?15:9});
+  if(source){ const a2=angleTo(source.x,source.y,e.x,e.y);
+    for(let i=0;i<3;i++){ const aa=a2+rand(-0.45,0.45), sp=rand(150,300);
+      G.particles.push({x:e.x,y:e.y,vx:Math.cos(aa)*sp,vy:Math.sin(aa)*sp,life:0.22,maxLife:0.22,color:'#fff',size:2.5}); } }
   if(source && source.lifesteal){ const heal=dmg*source.lifesteal; source.hp=Math.min(source.maxHp, source.hp+heal);
     spawnFloater(source.x, source.y-source.r-16, '+'+Math.round(heal), '#7ee081', 13); }
   if(source && Math.random()<source.thunder){ // 雷霆
@@ -769,7 +779,7 @@ function startWave(){
       const type=pool[irand(0,pool.length-1)];
       G.spawnQueue.push({type, hpMul, dmgMul});
     }
-    G.spawnTimer=0;
+    G.squadT=0.6; // 首队快速入场(节奏化出怪)
     if(G.bgmNow!=='battle') playBgm('battle');
   }
   G.waveTimer=0;
@@ -781,22 +791,35 @@ function startWave(){
 }
 
 function spawnFromQueue(dt){
-  if(!G.spawnQueue.length) return;
-  G.spawnTimer-=dt;
-  if(G.spawnTimer<=0){
-    G.spawnTimer=0.3;
-    const batch=Math.min(5,G.spawnQueue.length); // 每批5只, 压力来得更快
-    for(let i=0;i<batch;i++){
-      const s=G.spawnQueue.shift();
-      // 边缘生成
-      const side=irand(0,3); let x,y;
-      if(side===0){x=rand(60,WORLD_W-60);y=60;} else if(side===1){x=rand(60,WORLD_W-60);y=WORLD_H-60;}
-      else if(side===2){x=60;y=rand(60,WORLD_H-60);} else {x=WORLD_W-60;y=rand(60,WORLD_H-60);}
-      const e=makeEnemy(s.type,x,y,s.hpMul,s.dmgMul||1);
-      maybeElite(e); // 13波起概率附带精英词缀
-      G.enemies.push(e);
-      spawnParticles(x,y,'#9a4ab0',6,80,0.4,3);
+  if(!G.spawnQueue.length){ G.squadWarn=null; return; }
+  // 小队节奏: ⚠方向预告(0.9s) → 同侧整队爆出(4-6只) → 停顿2.2-3.2s
+  // 形成波峰波谷, 不再一股脑连续刷
+  if(G.squadWarn){
+    const w=G.squadWarn;
+    w.t-=dt;
+    if(Math.random()<dt*20) spawnParticles(w.x,w.y,'#c06ce0',1,60,0.3,3); // 预告粒子
+    if(w.t<=0){
+      G.squadWarn=null;
+      // 小队规模随波次扩大, 间隔随波次缩短(前期节奏舒缓, 后期汹涌)
+      const n=Math.min(irand(4,6)+Math.floor(G.wave/8), G.spawnQueue.length);
+      for(let i=0;i<n;i++){
+        const s=G.spawnQueue.shift();
+        const e=makeEnemy(s.type, clamp(w.x+rand(-90,90),60,WORLD_W-60), clamp(w.y+rand(-90,90),60,WORLD_H-60), s.hpMul,s.dmgMul||1);
+        maybeElite(e); G.enemies.push(e);
+      }
+      spawnParticles(w.x,w.y,'#9a4ab0',14,160,0.5,4);
+      playSfx('magic',0.3);
+      G.squadT=rand(0.8,1.2)*Math.max(0.9, 2.6-G.wave*0.06);
     }
+    return;
+  }
+  G.squadT=(G.squadT||0)-dt;
+  if(G.squadT<=0){
+    const side=irand(0,3); let x,y;
+    if(side===0){x=rand(120,WORLD_W-120);y=70;} else if(side===1){x=rand(120,WORLD_W-120);y=WORLD_H-70;}
+    else if(side===2){x=70;y=rand(120,WORLD_H-70);} else {x=WORLD_W-70;y=rand(120,WORLD_H-70);}
+    G.squadWarn={x,y,t:0.9};
+    spawnFloater(x,y,'⚠','#c06ce0',26);
   }
 }
 
@@ -1235,7 +1258,7 @@ function updateCamera(dt){
 }
 
 function updateParticles(dt){
-  for(const pt of G.particles){ pt.life-=dt; if(!pt.slash){pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vx*=0.96;pt.vy*=0.96;} }
+  for(const pt of G.particles){ pt.life-=dt; if(!pt.slash){pt.x+=(pt.vx||0)*dt;pt.y+=(pt.vy||0)*dt;pt.vx=(pt.vx||0)*0.96;pt.vy=(pt.vy||0)*0.96;} }
   G.particles=G.particles.filter(p=>p.life>0);
   for(const f of G.floaters){ f.life-=dt; f.x+=(f.vx||0)*dt; f.y+=f.vy*dt; f.vy*=0.95; f.vx*=0.9; }
   G.floaters=G.floaters.filter(f=>f.life>0);
@@ -1497,6 +1520,15 @@ function drawPortal(ctx,po){
 }
 function drawParticle(ctx,pt){
   const a=pt.life/pt.maxLife;
+  if(pt.star){ // 命中星芒(米字闪)
+    ctx.save(); ctx.globalAlpha=a; ctx.strokeStyle=pt.color; ctx.lineWidth=2.5;
+    const r=pt.size*(1.4-a*0.4), d=r*0.45;
+    ctx.beginPath();
+    ctx.moveTo(pt.x-r,pt.y); ctx.lineTo(pt.x+r,pt.y);
+    ctx.moveTo(pt.x,pt.y-r); ctx.lineTo(pt.x,pt.y+r);
+    ctx.moveTo(pt.x-d,pt.y-d); ctx.lineTo(pt.x+d,pt.y+d);
+    ctx.moveTo(pt.x-d,pt.y+d); ctx.lineTo(pt.x+d,pt.y-d);
+    ctx.stroke(); ctx.restore(); return; }
   if(pt.shock){ // 冲击波扩散环
     ctx.save();ctx.globalAlpha=a*0.8;ctx.strokeStyle=pt.color;ctx.lineWidth=6*a;
     const r=lerp(pt.maxR,10,pt.life/pt.maxLife);
